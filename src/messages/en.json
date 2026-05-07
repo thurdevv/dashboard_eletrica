@@ -1,0 +1,83 @@
+{
+  "common": {
+    "save":     "Save",
+    "cancel":   "Cancel",
+    "delete":   "Delete",
+    "edit":     "Edit",
+    "back":     "Back",
+    "loading":  "Loading…",
+    "error":    "Error",
+    "confirm":  "Confirm",
+    "close":    "Close",
+    "search":   "Search"
+  },
+  "status": {
+    "NOT_STARTED": "Not started",
+    "IN_PROGRESS": "In progress",
+    "COMPLETED":   "Completed",
+    "ISSUE":       "Issue"
+  },
+  "viewer": {
+    "selectElement": "Click an element in the model to view details and log progress.",
+    "loadModel":     "Load model",
+    "changeModel":   "Change model",
+    "resetCamera":   "Reset camera",
+    "showAll":       "Show all",
+    "allLevels":     "All levels",
+    "convertXkt":    "Save XKT"
+  },
+  "panel": {
+    "info":      "Info",
+    "form":      "Log",
+    "comments":  "Comments",
+    "history":   "History",
+    "globalId":  "GlobalId",
+    "type":      "Type",
+    "level":     "Level"
+  },
+  "form": {
+    "status":          "Status",
+    "executedQty":     "Executed quantity",
+    "team":            "Team size",
+    "hours":           "Worked hours",
+    "notes":           "Notes",
+    "photo":           "Photo",
+    "save":            "Save record",
+    "saved":           "Saved!",
+    "planning":        "Planning (S-curve)",
+    "plannedStart":    "Planned start",
+    "plannedEnd":      "Planned end",
+    "plannedQuantity": "Planned qty."
+  },
+  "report": {
+    "title":         "Progress report",
+    "exportExcel":   "Excel",
+    "exportCsv":     "CSV",
+    "exportPdf":     "PDF",
+    "completed":     "Completed",
+    "inProgress":    "In progress",
+    "issues":        "Issues",
+    "notStarted":    "Not started",
+    "noRecord":      "No record"
+  },
+  "dashboard": {
+    "title":          "Dashboard",
+    "byStatus":       "By status",
+    "byLevel":        "Status by level",
+    "sCurve":         "S-curve — planned vs actual",
+    "topProductivity": "Top 10 — productivity",
+    "noData":         "No data yet."
+  },
+  "annotations": {
+    "title":   "3D Annotations",
+    "new":     "New",
+    "open":    "Open",
+    "review":  "In review",
+    "resolved": "Resolved",
+    "all":     "All"
+  },
+  "schedule": {
+    "title":   "Schedule",
+    "newTask": "New task"
+  }
+}

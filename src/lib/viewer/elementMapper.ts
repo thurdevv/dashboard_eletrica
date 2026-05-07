@@ -43,27 +43,73 @@ const LENGTH_PROP_NAMES = new Set([
   'overalllength', 'span', 'height', 'depth',
 ])
 
+const COUNT_PROP_NAMES = new Set([
+  'count', 'numberof', 'quantity', 'quantidade', 'number',
+])
+
+const AREA_PROP_NAMES = new Set([
+  'area', 'netarea', 'grossarea', 'netsidearea', 'grosssidearea',
+])
+
+const VOLUME_PROP_NAMES = new Set([
+  'volume', 'netvolume', 'grossvolume',
+])
+
 function extractLengthAndProps(meta: MetaObject | undefined): {
-  length?: number
+  length?:    number
+  count?:     number
+  area?:      number
+  volume?:    number
   properties?: Record<string, string>
 } {
   if (!meta?.metaProperties?.length) return {}
 
   const properties: Record<string, string> = {}
   let length: number | undefined
+  let count:  number | undefined
+  let area:   number | undefined
+  let volume: number | undefined
 
   for (const prop of meta.metaProperties) {
     const val = prop.value
     if (val === null || val === undefined || val === '') continue
     properties[prop.name] = String(val)
 
-    if (!length && LENGTH_PROP_NAMES.has(prop.name.toLowerCase())) {
+    const lower = prop.name.toLowerCase()
+    if (!length && LENGTH_PROP_NAMES.has(lower)) {
       const num = parseFloat(String(val))
       if (!isNaN(num) && num > 0) length = num
     }
+    if (!count && COUNT_PROP_NAMES.has(lower)) {
+      const num = parseFloat(String(val))
+      if (!isNaN(num) && num > 0) count = num
+    }
+    if (!area && AREA_PROP_NAMES.has(lower)) {
+      const num = parseFloat(String(val))
+      if (!isNaN(num) && num > 0) area = num
+    }
+    if (!volume && VOLUME_PROP_NAMES.has(lower)) {
+      const num = parseFloat(String(val))
+      if (!isNaN(num) && num > 0) volume = num
+    }
   }
 
-  return { length, properties: Object.keys(properties).length ? properties : undefined }
+  return { length, count, area, volume, properties: Object.keys(properties).length ? properties : undefined }
+}
+
+/**
+ * Sugere uma quantidade executável baseado nas property sets do IFC.
+ * Prioridade: length → count → area → volume.
+ * Retorna `undefined` se não houver nenhuma propriedade reconhecida.
+ */
+export function suggestQuantityFromProps(
+  props: { length?: number; count?: number; area?: number; volume?: number },
+): { value: number; unit: 'm' | 'un' | 'm²' | 'm³' } | undefined {
+  if (props.length && props.length > 0) return { value: props.length, unit: 'm'  }
+  if (props.count  && props.count  > 0) return { value: props.count,  unit: 'un' }
+  if (props.area   && props.area   > 0) return { value: props.area,   unit: 'm²' }
+  if (props.volume && props.volume > 0) return { value: props.volume, unit: 'm³' }
+  return undefined
 }
 
 export function extractIFCElement(

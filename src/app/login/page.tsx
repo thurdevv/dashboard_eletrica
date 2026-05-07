@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Layers, Eye, EyeOff } from 'lucide-react'
-import { login, createUser, hasAnyUser, getCurrentSession } from '@/lib/auth'
+import { signIn, signUp, hasAnyUser, getCurrentSession, authMode } from '@/lib/auth'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -33,19 +33,28 @@ export default function LoginPage() {
       return
     }
 
-    if (isRegister) {
-      if (password !== confirm) { setError('Senhas não conferem.'); setLoading(false); return }
-      if (password.length < 4)  { setError('Senha mínima: 4 caracteres.'); setLoading(false); return }
-      const user = createUser(username, password)
-      if (!user) { setError('Nome de usuário já existe.'); setLoading(false); return }
-      login(username, password)
-      router.replace('/projects')
-    } else {
-      const user = login(username, password)
-      if (!user) { setError('Usuário ou senha incorretos.'); setLoading(false); return }
-      router.replace('/projects')
+    try {
+      if (isRegister) {
+        if (password !== confirm) { setError('Senhas não conferem.'); setLoading(false); return }
+        if (password.length < 6)  { setError('Senha mínima: 6 caracteres.'); setLoading(false); return }
+        const user = await signUp(username, password)
+        if (!user) {
+          setError(authMode() === 'supabase'
+            ? 'Falha ao criar conta. Email já cadastrado ou inválido.'
+            : 'Nome de usuário já existe.')
+          setLoading(false); return
+        }
+        router.replace('/projects')
+      } else {
+        const user = await signIn(username, password)
+        if (!user) { setError('Usuário ou senha incorretos.'); setLoading(false); return }
+        router.replace('/projects')
+      }
+    } catch (err: any) {
+      setError(err?.message ?? 'Erro inesperado. Tente novamente.')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   return (

@@ -1,0 +1,83 @@
+{
+  "common": {
+    "save":     "Salvar",
+    "cancel":   "Cancelar",
+    "delete":   "Apagar",
+    "edit":     "Editar",
+    "back":     "Voltar",
+    "loading":  "Carregando…",
+    "error":    "Erro",
+    "confirm":  "Confirmar",
+    "close":    "Fechar",
+    "search":   "Buscar"
+  },
+  "status": {
+    "NOT_STARTED": "Não Iniciado",
+    "IN_PROGRESS": "Em Execução",
+    "COMPLETED":   "Concluído",
+    "ISSUE":       "Problema"
+  },
+  "viewer": {
+    "selectElement": "Clique em um elemento no modelo para ver detalhes e registrar o progresso.",
+    "loadModel":     "Carregar modelo",
+    "changeModel":   "Trocar modelo",
+    "resetCamera":   "Resetar câmera",
+    "showAll":       "Mostrar tudo",
+    "allLevels":     "Todos os Pavimentos",
+    "convertXkt":    "Salvar XKT"
+  },
+  "panel": {
+    "info":      "Info",
+    "form":      "Registrar",
+    "comments":  "Comentários",
+    "history":   "Histórico",
+    "globalId":  "GlobalId",
+    "type":      "Tipo",
+    "level":     "Pavimento"
+  },
+  "form": {
+    "status":          "Status",
+    "executedQty":     "Quantidade Executada",
+    "team":            "Tamanho da Equipe",
+    "hours":           "Horas Trabalhadas",
+    "notes":           "Observações",
+    "photo":           "Foto",
+    "save":            "Salvar Registro",
+    "saved":           "Salvo!",
+    "planning":        "Planejamento (curva S)",
+    "plannedStart":    "Início Plan.",
+    "plannedEnd":      "Fim Plan.",
+    "plannedQuantity": "Qtd. Planejada"
+  },
+  "report": {
+    "title":         "Relatório de Progresso",
+    "exportExcel":   "Excel",
+    "exportCsv":     "CSV",
+    "exportPdf":     "PDF",
+    "completed":     "Concluídos",
+    "inProgress":    "Em Execução",
+    "issues":        "Problemas",
+    "notStarted":    "Não Iniciados",
+    "noRecord":      "Sem Registro"
+  },
+  "dashboard": {
+    "title":          "Dashboard",
+    "byStatus":       "Distribuição por Status",
+    "byLevel":        "Status por Pavimento",
+    "sCurve":         "Curva S — Planejado vs Realizado",
+    "topProductivity": "Top 10 — Produtividade",
+    "noData":         "Sem dados ainda."
+  },
+  "annotations": {
+    "title":   "Anotações 3D",
+    "new":     "Nova",
+    "open":    "Aberto",
+    "review":  "Em revisão",
+    "resolved": "Resolvido",
+    "all":     "Todas"
+  },
+  "schedule": {
+    "title":   "Cronograma",
+    "newTask": "Nova tarefa"
+  }
+}

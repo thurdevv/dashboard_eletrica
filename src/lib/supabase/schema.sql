@@ -36,12 +36,77 @@ create table if not exists execution_records (
                      ) stored,
   notes              text,
   photo_url          text,
+  planned_start      date,
+  planned_end        date,
+  planned_quantity   numeric,
+  updated_by         text,
   created_at         timestamptz default now(),
   updated_at         timestamptz default now(),
 
   -- one record per element per project (upsert-friendly)
   unique (project_id, ifc_global_id)
 );
+
+-- ─── Execution History (audit log) ───────────────────────────
+create table if not exists execution_history (
+  id                 uuid primary key default gen_random_uuid(),
+  project_id         uuid not null references projects(id) on delete cascade,
+  ifc_global_id      text not null,
+  changed_at         timestamptz default now(),
+  changed_by         text,
+  status             text,
+  executed_quantity  numeric,
+  team_size          integer,
+  worked_hours       numeric,
+  notes              text,
+  changes            jsonb
+);
+create index if not exists idx_history_project on execution_history(project_id, ifc_global_id, changed_at desc);
+
+-- ─── Element Comments ────────────────────────────────────────
+create table if not exists element_comments (
+  id            uuid primary key default gen_random_uuid(),
+  project_id    uuid not null references projects(id) on delete cascade,
+  ifc_global_id text not null,
+  author        text,
+  text          text not null,
+  created_at    timestamptz default now()
+);
+create index if not exists idx_comments_element on element_comments(project_id, ifc_global_id, created_at desc);
+
+-- ─── 3D Annotations (BCF-like) ───────────────────────────────
+create table if not exists annotations_3d (
+  id            uuid primary key default gen_random_uuid(),
+  project_id    uuid not null references projects(id) on delete cascade,
+  title         text not null,
+  description   text,
+  x             numeric not null,
+  y             numeric not null,
+  z             numeric not null,
+  ifc_global_id text,
+  photo_url     text,
+  status        text default 'OPEN' check (status in ('OPEN','IN_REVIEW','RESOLVED')),
+  created_by    text,
+  created_at    timestamptz default now()
+);
+create index if not exists idx_annotations_project on annotations_3d(project_id, status);
+
+-- ─── Scheduled Tasks (cronograma) ────────────────────────────
+create table if not exists scheduled_tasks (
+  id            uuid primary key default gen_random_uuid(),
+  project_id    uuid not null references projects(id) on delete cascade,
+  title         text not null,
+  description   text,
+  level         text,
+  element_type  text,
+  global_ids    text[],
+  planned_start date not null,
+  planned_end   date not null,
+  status        text default 'NOT_STARTED'
+                  check (status in ('NOT_STARTED','IN_PROGRESS','COMPLETED','ISSUE')),
+  created_at    timestamptz default now()
+);
+create index if not exists idx_schedule_project on scheduled_tasks(project_id, planned_start);
 
 -- ─── Indexes ─────────────────────────────────────────────────
 create index if not exists idx_exec_project       on execution_records(project_id);
@@ -64,15 +129,37 @@ create trigger trg_exec_updated_at
   for each row execute function update_updated_at();
 
 -- ─── Row Level Security ──────────────────────────────────────
-alter table projects          enable row level security;
-alter table execution_records enable row level security;
+alter table projects           enable row level security;
+alter table execution_records  enable row level security;
+alter table execution_history  enable row level security;
+alter table element_comments   enable row level security;
+alter table annotations_3d     enable row level security;
+alter table scheduled_tasks    enable row level security;
 
--- Users can manage their own projects
 create policy "owner_all_projects" on projects
   for all using (auth.uid() = owner_id);
 
--- Users can manage execution records of their own projects
 create policy "owner_all_exec_records" on execution_records
+  for all using (
+    project_id in (select id from projects where owner_id = auth.uid())
+  );
+
+create policy "owner_all_history" on execution_history
+  for all using (
+    project_id in (select id from projects where owner_id = auth.uid())
+  );
+
+create policy "owner_all_comments" on element_comments
+  for all using (
+    project_id in (select id from projects where owner_id = auth.uid())
+  );
+
+create policy "owner_all_annotations" on annotations_3d
+  for all using (
+    project_id in (select id from projects where owner_id = auth.uid())
+  );
+
+create policy "owner_all_schedule" on scheduled_tasks
   for all using (
     project_id in (select id from projects where owner_id = auth.uid())
   );

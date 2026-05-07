@@ -105,6 +105,7 @@ export default function ViewerControls({
         <button
           onClick={() => { setSelectedLevel(''); onIsolateLevel(null) }}
           title="Mostrar tudo"
+          aria-label="Mostrar todos os pavimentos"
           className="p-1.5 rounded bg-neutral-700 hover:bg-neutral-600 text-neutral-300"
         >
           <Eye className="w-4 h-4" />
@@ -115,6 +116,7 @@ export default function ViewerControls({
           <button
             onClick={onResetCamera}
             title="Resetar câmera"
+            aria-label="Resetar câmera para visão padrão"
             className="p-1.5 rounded bg-neutral-700 hover:bg-neutral-600 text-neutral-300"
           >
             <Home className="w-4 h-4" />
@@ -148,6 +150,7 @@ export default function ViewerControls({
             URL.revokeObjectURL(url)
           }}
           title="Baixar arquivo do modelo"
+          aria-label="Baixar arquivo do modelo atual"
           disabled={!model.data}
           className="p-1.5 rounded bg-neutral-700 hover:bg-neutral-600 disabled:opacity-30 text-neutral-300"
         >
@@ -173,6 +176,7 @@ export default function ViewerControls({
           <button
             onClick={onChangeModel}
             title="Trocar modelo"
+            aria-label="Trocar modelo BIM atual"
             className="p-1.5 rounded bg-neutral-700 hover:bg-neutral-600 text-neutral-300 ml-auto"
           >
             <FolderOpen className="w-4 h-4" />

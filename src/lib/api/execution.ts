@@ -74,8 +74,9 @@ export async function upsertExecutionRecord(
   element: IFCElement,
   form: ExecutionFormData,
   photoUrl?: string,
+  changedBy: string = 'local',
 ): Promise<ExecutionRecord> {
-  if (!isSupabaseReady()) return localUpsert(projectId, element, form, photoUrl)
+  if (!isSupabaseReady()) return localUpsert(projectId, element, form, photoUrl, changedBy)
 
   try {
     const denom = form.team_size * form.worked_hours
@@ -94,6 +95,10 @@ export async function upsertExecutionRecord(
       photo_url:          photoUrl,
       element_screenshot: element.screenshot,
       element_length:     element.length,
+      planned_start:      form.planned_start ?? null,
+      planned_end:        form.planned_end ?? null,
+      planned_quantity:   form.planned_quantity ?? null,
+      updated_by:         changedBy,
     }
 
     const { data, error } = await supabase
@@ -105,7 +110,7 @@ export async function upsertExecutionRecord(
     if (error) throw error
     return data
   } catch {
-    return localUpsert(projectId, element, form, photoUrl)
+    return localUpsert(projectId, element, form, photoUrl, changedBy)
   }
 }
 

@@ -3,8 +3,12 @@
 import { useEffect, useState } from 'react'
 import { X, ZoomIn, Tag, Layers, Box, Hash, Ruler } from 'lucide-react'
 import ProgressForm from './ProgressForm'
+import CommentsTab from './CommentsTab'
+import HistoryTab from './HistoryTab'
 import type { IFCElement, ExecutionRecord, ExecutionFormData } from '@/types'
 import { STATUS_LABELS, STATUS_BADGE_CLASS } from '@/types'
+
+type Tab = 'info' | 'form' | 'comments' | 'history'
 
 interface ElementPanelProps {
   element:    IFCElement | null
@@ -17,7 +21,7 @@ interface ElementPanelProps {
 }
 
 export default function ElementPanel({ element, record, saving, onClose, onZoomTo, onSave, projectId }: ElementPanelProps) {
-  const [tab, setTab] = useState<'info' | 'form'>('info')
+  const [tab, setTab] = useState<Tab>('info')
 
   useEffect(() => {
     setTab(record ? 'info' : 'form')
@@ -44,10 +48,12 @@ export default function ElementPanel({ element, record, saving, onClose, onZoomT
         </div>
         <div className="flex items-center gap-1 ml-2 mt-0.5">
           <button onClick={() => onZoomTo(element.globalId)} title="Zoom no elemento"
+            aria-label="Dar zoom no elemento selecionado"
             className="p-1.5 rounded hover:bg-gray-100 text-gray-500">
             <ZoomIn className="w-4 h-4" />
           </button>
           <button onClick={onClose} title="Fechar painel"
+            aria-label="Fechar painel do elemento"
             className="p-1.5 rounded hover:bg-gray-100 text-gray-500">
             <X className="w-4 h-4" />
           </button>
@@ -55,19 +61,28 @@ export default function ElementPanel({ element, record, saving, onClose, onZoomT
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-200">
-        {(['info', 'form'] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`flex-1 py-2.5 text-sm font-medium transition-colors
-              ${tab === t ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}>
-            {t === 'info' ? 'Informações' : 'Registrar Progresso'}
+      <div className="flex border-b border-gray-200 overflow-x-auto">
+        {([
+          { id: 'info',     label: 'Info'      },
+          { id: 'form',     label: 'Registrar' },
+          { id: 'comments', label: 'Coment.'   },
+          { id: 'history',  label: 'Histórico' },
+        ] as const).map((t) => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className={`flex-1 min-w-[80px] py-2.5 text-sm font-medium transition-colors
+              ${tab === t.id ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}>
+            {t.label}
           </button>
         ))}
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        {tab === 'info' ? (
+        {tab === 'comments' && projectId ? (
+          <CommentsTab projectId={projectId} globalId={element.globalId} />
+        ) : tab === 'history' && projectId ? (
+          <HistoryTab projectId={projectId} globalId={element.globalId} />
+        ) : tab === 'info' ? (
           <div className="p-4 flex flex-col gap-3">
             {[
               { icon: <Hash className="w-3.5 h-3.5" />,   label: 'GlobalId',   value: element.globalId },

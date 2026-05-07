@@ -40,6 +40,11 @@ export default function ProgressForm({ initial, onSave, saving, projectId, globa
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saved,     setSaved]     = useState(false)
 
+  // Planejamento (curva S)
+  const [plannedStart,    setPlannedStart]    = useState(initial?.planned_start    ?? '')
+  const [plannedEnd,      setPlannedEnd]      = useState(initial?.planned_end      ?? '')
+  const [plannedQuantity, setPlannedQuantity] = useState<number>(initial?.planned_quantity ?? 0)
+
   // daily log
   const [dailyLog,       setDailyLog]       = useState<DailyEntry[]>([])
   const [newDate,        setNewDate]        = useState(todayStr)
@@ -92,7 +97,12 @@ export default function ProgressForm({ initial, onSave, saving, projectId, globa
     setSaveError(null)
     setSaved(false)
     try {
-      await onSave({ status, executed_quantity: qty, team_size: team, worked_hours: hours, notes, photo })
+      await onSave({
+        status, executed_quantity: qty, team_size: team, worked_hours: hours, notes, photo,
+        planned_start:    plannedStart || undefined,
+        planned_end:      plannedEnd || undefined,
+        planned_quantity: plannedQuantity > 0 ? plannedQuantity : undefined,
+      })
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     } catch (err: any) {
@@ -224,6 +234,12 @@ export default function ProgressForm({ initial, onSave, saving, projectId, globa
         {dailyLog.length > 0 && (
           <p className="text-xs text-gray-400 mt-0.5">Calculado automaticamente pelo progresso diário.</p>
         )}
+        {dailyLog.length === 0 && elementLength !== undefined && elementLength > 0 && qty !== elementLength && (
+          <button type="button" onClick={() => setQty(parseFloat(elementLength.toFixed(3)))}
+            className="text-xs text-blue-600 hover:underline mt-1">
+            Sugestão IFC: {elementLength.toFixed(3)} m — usar esse valor
+          </button>
+        )}
       </div>
 
       {/* Equipe / Horas */}
@@ -248,6 +264,35 @@ export default function ProgressForm({ initial, onSave, saving, projectId, globa
 
       {/* Produtividade */}
       <ProductivityCard executedQty={qty} teamSize={team} workedHours={hours} unit="m" />
+
+      {/* Planejamento */}
+      <details className="border border-gray-200 rounded-lg group">
+        <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center justify-between">
+          <span>Planejamento (curva S)</span>
+          <span className="text-gray-300 group-open:rotate-90 transition-transform">›</span>
+        </summary>
+        <div className="px-3 pb-3 pt-1 grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-xs text-gray-500 block mb-0.5">Início Plan.</label>
+            <input type="date" value={plannedStart}
+              onChange={(e) => setPlannedStart(e.target.value)}
+              className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 block mb-0.5">Fim Plan.</label>
+            <input type="date" value={plannedEnd}
+              onChange={(e) => setPlannedEnd(e.target.value)}
+              className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+          </div>
+          <div className="col-span-2">
+            <label className="text-xs text-gray-500 block mb-0.5">Qtd. Planejada (m)</label>
+            <input type="number" min={0} step="0.01" value={plannedQuantity || ''}
+              onChange={(e) => setPlannedQuantity(parseFloat(e.target.value) || 0)}
+              placeholder="opcional"
+              className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+          </div>
+        </div>
+      </details>
 
       {/* Observações */}
       <div>

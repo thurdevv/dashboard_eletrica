@@ -51,7 +51,70 @@ export interface ExecutionRecord {
   element_screenshot?: string   // data URL do canvas xeokit quando elemento foi selecionado
   element_length?:     number   // comprimento do elemento (IFC)
   daily_log?:          DailyEntry[]
+  planned_start?:      string   // YYYY-MM-DD — data prevista de início
+  planned_end?:        string   // YYYY-MM-DD — data prevista de término
+  planned_quantity?:   number   // quantitativo planejado (para curva S)
   created_at?:         string
+  updated_at?:         string
+  updated_by?:         string   // username da última edição
+}
+
+// ─── Comments ─────────────────────────────────────────────────
+export interface ElementComment {
+  id:          string
+  project_id:  string
+  globalId:    string
+  author:      string
+  text:        string
+  createdAt:   string
+}
+
+// ─── 3D Annotations (BCF-like) ────────────────────────────────
+export interface Annotation3D {
+  id:          string
+  project_id:  string
+  title:       string
+  description: string
+  x:           number
+  y:           number
+  z:           number
+  globalId?:   string   // elemento associado (opcional)
+  photo_url?:  string
+  status:      'OPEN' | 'IN_REVIEW' | 'RESOLVED'
+  createdBy:   string
+  createdAt:   string
+}
+
+// ─── Scheduled tasks (cronograma) ─────────────────────────────
+export interface ScheduledTask {
+  id:          string
+  project_id:  string
+  title:       string
+  description: string
+  level?:      string         // pavimento alvo
+  elementType?: string        // tipo IFC alvo
+  globalIds?:  string[]       // elementos específicos
+  plannedStart: string        // YYYY-MM-DD
+  plannedEnd:   string
+  status:      ExecutionStatus
+  createdAt:   string
+}
+
+// ─── Audit log de execução ────────────────────────────────────
+export interface ExecutionHistoryEntry {
+  id:           string
+  project_id:   string
+  globalId:     string
+  changedAt:    string
+  changedBy:    string
+  // snapshot dos campos relevantes ao momento da mudança
+  status:       ExecutionStatus
+  executed_quantity: number
+  team_size:    number
+  worked_hours: number
+  notes:        string
+  // diff opcional contra o snapshot anterior, p/ exibição
+  changes?:     Record<string, { from: unknown; to: unknown }>
 }
 
 export interface ExecutionFormData {
@@ -61,6 +124,9 @@ export interface ExecutionFormData {
   worked_hours: number
   notes: string
   photo?: File | null
+  planned_start?: string
+  planned_end?: string
+  planned_quantity?: number
 }
 
 export interface FilterState {

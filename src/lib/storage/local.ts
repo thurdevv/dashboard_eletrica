@@ -4,6 +4,7 @@
  */
 
 import type { ExecutionRecord, ExecutionFormData, IFCElement, FilterState, DailyEntry } from '@/types'
+import { appendHistory } from './extras'
 
 const PREFIX = 'bim_exec'
 
@@ -41,9 +42,11 @@ export function localUpsert(
   element: IFCElement,
   form: ExecutionFormData,
   photoUrl?: string,
+  changedBy: string = 'local',
 ): ExecutionRecord {
   const existing = localGet(projectId, element.globalId)
   const denom    = form.team_size * form.worked_hours
+  const now      = new Date().toISOString()
   const record: ExecutionRecord = {
     id:                existing?.id ?? crypto.randomUUID(),
     project_id:        projectId,
@@ -60,10 +63,18 @@ export function localUpsert(
     photo_url:          photoUrl ?? existing?.photo_url,
     element_screenshot: element.screenshot ?? existing?.element_screenshot,
     element_length:     element.length ?? existing?.element_length,
+    planned_start:      form.planned_start ?? existing?.planned_start,
+    planned_end:        form.planned_end ?? existing?.planned_end,
+    planned_quantity:   form.planned_quantity ?? existing?.planned_quantity,
     daily_log:          existing?.daily_log,   // preserved; managed separately
-    created_at:         existing?.created_at ?? new Date().toISOString(),
+    created_at:         existing?.created_at ?? now,
+    updated_at:         now,
+    updated_by:         changedBy,
   }
   localStorage.setItem(key(projectId, element.globalId), JSON.stringify(record))
+  // Audit log — só grava se algo relevante mudou (a função decide)
+  try { appendHistory(projectId, element.globalId, changedBy, record, existing) }
+  catch { /* não falha o upsert se o log falhar */ }
   return record
 }
 

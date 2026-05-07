@@ -1,18 +1,21 @@
 'use client'
 
 import { useRef } from 'react'
-import { X, Printer, FileText } from 'lucide-react'
+import { X, Printer, FileText, FileSpreadsheet, FileDown } from 'lucide-react'
 import type { ExecutionRecord } from '@/types'
 import { STATUS_LABELS, STATUS_BADGE_CLASS } from '@/types'
+import { exportProjectToXlsx, exportProjectToCsv } from '@/lib/export/excel'
+import { getAllHistory } from '@/lib/storage/extras'
 
 interface ReportModalProps {
   records:       ExecutionRecord[]
   projectName:   string
+  projectId?:    string
   totalElements: number
   onClose:       () => void
 }
 
-export default function ReportModal({ records, projectName, totalElements, onClose }: ReportModalProps) {
+export default function ReportModal({ records, projectName, projectId, totalElements, onClose }: ReportModalProps) {
   const printRef = useRef<HTMLDivElement>(null)
 
   const registered  = records.length
@@ -80,12 +83,32 @@ export default function ReportModal({ records, projectName, totalElements, onClo
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={() => {
+                const history = projectId ? getAllHistory(projectId) : []
+                exportProjectToXlsx({ projectName, records, history, totalElements })
+              }}
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-3 py-2 rounded-lg"
+              aria-label="Exportar para Excel"
+              title="Exportar para Excel (.xlsx)"
+            >
+              <FileSpreadsheet className="w-4 h-4" /> Excel
+            </button>
+            <button
+              onClick={() => exportProjectToCsv(records, projectName)}
+              className="flex items-center gap-2 bg-slate-600 hover:bg-slate-700 text-white text-sm font-semibold px-3 py-2 rounded-lg"
+              aria-label="Exportar para CSV"
+              title="Exportar para CSV"
+            >
+              <FileDown className="w-4 h-4" /> CSV
+            </button>
+            <button
               onClick={handlePrint}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg"
+              aria-label="Imprimir ou salvar como PDF"
             >
-              <Printer className="w-4 h-4" /> Imprimir / PDF
+              <Printer className="w-4 h-4" /> PDF
             </button>
-            <button onClick={onClose} className="p-2 rounded hover:bg-gray-100 text-gray-500">
+            <button onClick={onClose} aria-label="Fechar relatório" className="p-2 rounded hover:bg-gray-100 text-gray-500">
               <X className="w-5 h-5" />
             </button>
           </div>

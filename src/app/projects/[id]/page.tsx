@@ -3,7 +3,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
-import { ArrowLeft, LogOut } from 'lucide-react'
+import Link from 'next/link'
+import { ArrowLeft, LogOut, BarChart3, MapPin, CalendarDays } from 'lucide-react'
 import ModelUploader from '@/components/viewer/ModelUploader'
 import ViewerControls from '@/components/viewer/ViewerControls'
 import ElementPanel from '@/components/panel/ElementPanel'
@@ -187,6 +188,21 @@ export default function ProjectViewerPage() {
             className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-2 md:px-3 py-1.5 rounded-lg transition-colors">
             <span>📄</span><span className="hidden md:inline">Relatório</span>
           </button>
+          <Link href={`/projects/${projectId}/dashboard`}
+            aria-label="Abrir dashboard analítico"
+            className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-2 md:px-3 py-1.5 rounded-lg transition-colors">
+            <BarChart3 className="w-4 h-4" /><span className="hidden md:inline">Dashboard</span>
+          </Link>
+          <Link href={`/projects/${projectId}/annotations`}
+            aria-label="Abrir anotações"
+            className="flex items-center gap-1 bg-pink-600 hover:bg-pink-700 text-white text-xs font-semibold px-2 md:px-3 py-1.5 rounded-lg transition-colors hidden md:flex">
+            <MapPin className="w-4 h-4" /><span className="hidden md:inline">Anotações</span>
+          </Link>
+          <Link href={`/projects/${projectId}/schedule`}
+            aria-label="Abrir cronograma"
+            className="flex items-center gap-1 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold px-2 md:px-3 py-1.5 rounded-lg transition-colors hidden md:flex">
+            <CalendarDays className="w-4 h-4" /><span className="hidden md:inline">Cronograma</span>
+          </Link>
 
           {/* Sincronização com Google Drive */}
           {loadedModel && (
@@ -200,6 +216,7 @@ export default function ProjectViewerPage() {
           )}
 
           <button onClick={() => { logout(); router.replace('/login') }} title={`Sair (${username})`}
+            aria-label={`Sair da conta ${username}`}
             className="p-1.5 rounded-lg hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors hidden md:block">
             <LogOut className="w-4 h-4" />
           </button>
@@ -310,6 +327,7 @@ export default function ProjectViewerPage() {
         <ReportModal
           records={records}
           projectName={projectName}
+          projectId={projectId}
           totalElements={modelElementCount}
           onClose={() => setShowReport(false)}
         />
