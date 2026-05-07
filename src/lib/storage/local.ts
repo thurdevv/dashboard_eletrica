@@ -1,0 +1,189 @@
+/**
+ * Fallback de armazenamento local (localStorage) para uso sem Supabase.
+ * Mesma interface da API do Supabase para que a troca seja transparente.
+ */
+
+import type { ExecutionRecord, ExecutionFormData, IFCElement, FilterState, DailyEntry } from '@/types'
+
+const PREFIX = 'bim_exec'
+
+function key(projectId: string, globalId: string) {
+  return `${PREFIX}_${projectId}_${globalId}`
+}
+
+function allKeys(projectId: string): string[] {
+  if (typeof window === 'undefined') return []
+  return Object.keys(localStorage).filter((k) => k.startsWith(`${PREFIX}_${projectId}_`))
+}
+
+export function localGet(projectId: string, globalId: string): ExecutionRecord | null {
+  if (typeof window === 'undefined') return null
+  const raw = localStorage.getItem(key(projectId, globalId))
+  return raw ? JSON.parse(raw) : null
+}
+
+export function localGetAll(projectId: string, filters?: Partial<FilterState>): ExecutionRecord[] {
+  if (typeof window === 'undefined') return []
+  const records: ExecutionRecord[] = allKeys(projectId)
+    .map((k) => JSON.parse(localStorage.getItem(k)!))
+    .filter(Boolean)
+
+  return records.filter((r) => {
+    if (filters?.status && filters.status !== 'ALL' && r.status !== filters.status) return false
+    if (filters?.level && r.level !== filters.level) return false
+    if (filters?.elementType && r.element_type !== filters.elementType) return false
+    return true
+  })
+}
+
+export function localUpsert(
+  projectId: string,
+  element: IFCElement,
+  form: ExecutionFormData,
+  photoUrl?: string,
+): ExecutionRecord {
+  const existing = localGet(projectId, element.globalId)
+  const denom    = form.team_size * form.worked_hours
+  const record: ExecutionRecord = {
+    id:                existing?.id ?? crypto.randomUUID(),
+    project_id:        projectId,
+    ifc_global_id:     element.globalId,
+    element_name:      element.name,
+    element_type:      element.type,
+    level:             element.level,
+    status:            form.status,
+    executed_quantity: form.executed_quantity,
+    team_size:         form.team_size,
+    worked_hours:      form.worked_hours,
+    productivity:      denom > 0 ? form.executed_quantity / denom : 0,
+    notes:              form.notes,
+    photo_url:          photoUrl ?? existing?.photo_url,
+    element_screenshot: element.screenshot ?? existing?.element_screenshot,
+    element_length:     element.length ?? existing?.element_length,
+    daily_log:          existing?.daily_log,   // preserved; managed separately
+    created_at:         existing?.created_at ?? new Date().toISOString(),
+  }
+  localStorage.setItem(key(projectId, element.globalId), JSON.stringify(record))
+  return record
+}
+
+// ─── Daily progress log ───────────────────────────────────────
+const DAILY_PREFIX = 'bim_daily'
+
+function dailyKey(projectId: string, globalId: string) {
+  return `${DAILY_PREFIX}_${projectId}_${globalId}`
+}
+
+export function localGetDailyLog(projectId: string, globalId: string): DailyEntry[] {
+  if (typeof window === 'undefined') return []
+  const raw = localStorage.getItem(dailyKey(projectId, globalId))
+  return raw ? JSON.parse(raw) : []
+}
+
+export function localAddDailyEntry(
+  projectId: string,
+  globalId:  string,
+  meters:    number,
+  date:      string,
+  notes:     string,
+): DailyEntry[] {
+  const log = localGetDailyLog(projectId, globalId)
+  const entry: DailyEntry = {
+    id:      crypto.randomUUID(),
+    date,
+    meters,
+    notes,
+    savedAt: new Date().toISOString(),
+  }
+  const updated = [...log, entry].sort((a, b) => a.date.localeCompare(b.date))
+  localStorage.setItem(dailyKey(projectId, globalId), JSON.stringify(updated))
+  return updated
+}
+
+export function localDeleteDailyEntry(
+  projectId: string,
+  globalId:  string,
+  entryId:   string,
+): DailyEntry[] {
+  const log     = localGetDailyLog(projectId, globalId)
+  const updated = log.filter((e) => e.id !== entryId)
+  localStorage.setItem(dailyKey(projectId, globalId), JSON.stringify(updated))
+  return updated
+}
+
+export function localGetLevels(projectId: string): string[] {
+  const all = localGetAll(projectId)
+  return [...new Set(all.map((r) => r.level).filter(Boolean))].sort()
+}
+
+export function localGetElementTypes(projectId: string): string[] {
+  const all = localGetAll(projectId)
+  return [...new Set(all.map((r) => r.element_type).filter(Boolean))].sort()
+}
+
+export function localExport(projectId: string): string {
+  const records = localGetAll(projectId)
+  return JSON.stringify({ projectId, exportedAt: new Date().toISOString(), records }, null, 2)
+}
+
+export function localImport(projectId: string, json: string): number {
+  const parsed = JSON.parse(json)
+  const records: ExecutionRecord[] = parsed.records ?? parsed
+  for (const r of records) {
+    if (!r.ifc_global_id) continue
+    localStorage.setItem(key(projectId, r.ifc_global_id), JSON.stringify({ ...r, project_id: projectId }))
+  }
+  return records.length
+}
+
+export function localClear(projectId: string): void {
+  allKeys(projectId).forEach((k) => localStorage.removeItem(k))
+}
+
+// ─── Export/import completo (modelo + progresso) ──────────────
+export function localGetAllDailyLogs(projectId: string): Record<string, DailyEntry[]> {
+  if (typeof window === 'undefined') return {}
+  const prefix = `${DAILY_PREFIX}_${projectId}_`
+  const result: Record<string, DailyEntry[]> = {}
+  for (const k of Object.keys(localStorage)) {
+    if (k.startsWith(prefix)) {
+      const globalId = k.slice(prefix.length)
+      const raw = localStorage.getItem(k)
+      if (raw) result[globalId] = JSON.parse(raw)
+    }
+  }
+  return result
+}
+
+export function localImportDailyLogs(projectId: string, logs: Record<string, DailyEntry[]>): void {
+  for (const [globalId, entries] of Object.entries(logs)) {
+    localStorage.setItem(dailyKey(projectId, globalId), JSON.stringify(entries))
+  }
+}
+
+export interface ProgressBundle {
+  version:     number
+  exportedAt:  string
+  records:     ExecutionRecord[]
+  dailyLogs:   Record<string, DailyEntry[]>
+}
+
+export function localBuildBundle(projectId: string): ProgressBundle {
+  return {
+    version:    1,
+    exportedAt: new Date().toISOString(),
+    records:    localGetAll(projectId),
+    dailyLogs:  localGetAllDailyLogs(projectId),
+  }
+}
+
+export function localRestoreBundle(projectId: string, bundle: ProgressBundle): number {
+  for (const r of bundle.records) {
+    if (!r.ifc_global_id) continue
+    localStorage.setItem(key(projectId, r.ifc_global_id), JSON.stringify({ ...r, project_id: projectId }))
+  }
+  if (bundle.dailyLogs) {
+    localImportDailyLogs(projectId, bundle.dailyLogs)
+  }
+  return bundle.records.length
+}
