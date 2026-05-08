@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { ArrowLeft, LogOut, BarChart3, MapPin, CalendarDays } from 'lucide-react'
-import ModelUploader from '@/components/viewer/ModelUploader'
+import DriveModelLoader from '@/components/viewer/DriveModelLoader'
 import ViewerControls from '@/components/viewer/ViewerControls'
 import ElementPanel from '@/components/panel/ElementPanel'
 import FilterBar from '@/components/filters/FilterBar'
@@ -16,7 +16,8 @@ import { useExecution } from '@/hooks/useExecution'
 import { getProjectLevels, getProjectElementTypes, exportProjectData, importProjectData, exportModelWithProgress, importProgressBundle } from '@/lib/api/execution'
 import { getCurrentSession, logout } from '@/lib/auth'
 import { getProject } from '@/lib/projects'
-import { deleteModelCache } from '@/lib/storage/modelCache'
+import { deleteModelCache, loadModelCache } from '@/lib/storage/modelCache'
+import { clearDriveMeta } from '@/lib/storage/driveSync'
 import type { IFCElement, ExecutionFormData, FilterState, LoadedModel } from '@/types'
 import type { useXeokit } from '@/hooks/useXeokit'
 
@@ -58,6 +59,15 @@ export default function ProjectViewerPage() {
     loadAllRecords()
     Promise.all([getProjectLevels(projectId), getProjectElementTypes(projectId)])
       .then(([lvls, types]) => { setLevels(lvls); setElementTypes(types) })
+
+    // Restaura modelo do cache local — assim voltar das abas (Dashboard/
+    // Anotações/Cronograma) não cai na tela de seleção de novo.
+    loadModelCache(projectId).then((cached) => {
+      if (cached) {
+        loadedModelRef.current = cached
+        setLoadedModel(cached)
+      }
+    })
   }, [projectId, router]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { loadAllRecords(filters) }, [filters]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -150,7 +160,7 @@ export default function ProjectViewerPage() {
   }, [filters, projectId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!loadedModel) {
-    return <ModelUploader projectId={projectId} onModelLoad={handleModelLoad} />
+    return <DriveModelLoader projectId={projectId} onModelLoad={handleModelLoad} />
   }
 
   return (
@@ -243,6 +253,8 @@ export default function ProjectViewerPage() {
             onResetCamera={() => viewerControlsRef.current?.resetCamera()}
             onChangeModel={async () => {
               await deleteModelCache(projectId)
+              clearDriveMeta(projectId)
+              loadedModelRef.current = null
               setLoadedModel(null); setSelectedElement(null); setCurrent(null)
             }}
             onExportWithProgress={handleExportWithProgress}

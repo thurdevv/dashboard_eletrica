@@ -65,7 +65,11 @@ export function useXeokit({ canvasId, model, onElementSelect }: UseXeokitOptions
         })
 
         if (DistanceMeasurementsPlugin) {
-          const mp = new DistanceMeasurementsPlugin(viewer, {})
+          // defaultAxisVisible: false → some o "fantasma" verde dos eixos X/Y/Z
+          // que aparecia atrás da linha azul principal da medição.
+          const mp = new DistanceMeasurementsPlugin(viewer, {
+            defaultAxisVisible: false,
+          })
           mp.control.deactivate()
           measurePluginRef.current = mp
         }
