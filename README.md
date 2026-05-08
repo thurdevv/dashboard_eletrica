@@ -3,8 +3,8 @@
 > Acompanhamento de Instalações Elétricas com visualizador 3D BIM
 
 **URL em produção:** https://bim-electrical-dashboard.vercel.app  
-**Stack:** Next.js 16 · React 18 · TypeScript · Tailwind CSS · xeokit-sdk  
-**Armazenamento:** localStorage (padrão) ou Supabase (opcional)
+**Stack:** Next.js 16 · React 18 · TypeScript · Tailwind CSS · xeokit-sdk · Drizzle ORM  
+**Armazenamento:** localStorage (padrão) ou NeonDB Postgres (opcional)
 
 ---
 
@@ -24,8 +24,9 @@
 12. [Variáveis de ambiente](#12-variáveis-de-ambiente)
 13. [Deploy — Vercel](#13-deploy--vercel)
 14. [Deploy — Netlify](#14-deploy--netlify)
-15. [Supabase (opcional)](#15-supabase-opcional)
-16. [Problemas conhecidos e soluções](#16-problemas-conhecidos-e-soluções)
+15. [NeonDB (opcional)](#15-neondb-opcional)
+16. [Password gate (opcional)](#16-password-gate-opcional)
+17. [Problemas conhecidos e soluções](#17-problemas-conhecidos-e-soluções)
 
 ---
 
@@ -428,13 +429,19 @@ No mobile (< `md` = 768px):
 Crie um `.env.local` na raiz do projeto:
 
 ```env
-# ID do projeto (usado como prefixo no localStorage/Supabase)
+# ID do projeto (usado como prefixo no localStorage)
 NEXT_PUBLIC_PROJECT_ID=minha-obra-2024
 
-# Supabase (opcional — sem isso, usa localStorage)
-NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+# NeonDB Postgres (opcional — sem isso, usa localStorage)
+DATABASE_URL=postgresql://user:pass@ep-xxx.us-east-1.aws.neon.tech/neondb?sslmode=require
+
+# Password gate (opcional — protege todo o domínio com Basic Auth)
+SITE_PASSWORD=
+SITE_USERNAME=admin
+
+# Supabase Auth — em standby (não usado em produção; auth roda em modo local)
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
 ```
 
 Sem Supabase configurado, **tudo funciona normalmente** via localStorage.
@@ -503,25 +510,80 @@ netlify deploy --build --prod
 
 ---
 
-## 15. Supabase (opcional)
+## 15. NeonDB (opcional)
 
-Para persistir dados na nuvem (multi-dispositivo):
+Para persistir dados de execução na nuvem (multi-dispositivo), o app usa
+**NeonDB** (Postgres serverless) via **Drizzle ORM**. Sem isso configurado,
+tudo cai automaticamente no `localStorage` (igual à versão sem banco).
 
-1. Crie um projeto em [supabase.com](https://supabase.com)
-2. Execute o SQL em `src/lib/supabase/schema.sql` no SQL Editor do Supabase
-3. Crie um bucket `execution-photos` em Storage (público)
-4. Adicione as variáveis de ambiente (seção 12)
+### Setup
 
-O schema cria:
-- Tabela `projects`
-- Tabela `execution_records` com `unique(project_id, ifc_global_id)`
-- Produtividade calculada automaticamente (coluna gerada)
-- Row Level Security por `auth.uid()`
-- View `project_summary` com percentual de conclusão
+1. Crie um projeto em [neon.tech](https://neon.tech) (plano grátis)
+2. Abra **Dashboard → SQL Editor**, cole o conteúdo de `drizzle/init.sql`
+   e execute. Isso cria a tabela `execution_records` com índices e trigger.
+3. Em **Connection Details**, copie a connection string (formato
+   `postgresql://user:pass@ep-xxx.us-east-1.aws.neon.tech/neondb?sslmode=require`).
+4. No Vercel: **Settings → Environment Variables** → adicionar:
+   ```
+   DATABASE_URL = postgresql://user:pass@ep-xxx.../neondb?sslmode=require
+   ```
+5. Faça redeploy.
+
+### Como funciona
+
+- O cliente Drizzle em `src/lib/db/client.ts` é **lazy** — só conecta na
+  primeira query, não quebra o build se a env var faltar.
+- A função `isDatabaseReady()` checa `DATABASE_URL` e decide se vai pro
+  Neon ou cai no `localStorage`. Toda função em `src/lib/api/execution.ts`
+  segue esse padrão (try Neon → catch → localStorage).
+- Fotos são comprimidas a 1024px @ 65% JPEG e armazenadas como base64 na
+  coluna `photo_url` (TEXT). Sem necessidade de bucket de storage separado.
+
+### Migração de dados locais → nuvem
+
+Após configurar `DATABASE_URL` e fazer redeploy, ao abrir a página
+`/projects` o app detecta automaticamente registros antigos no
+localStorage e mostra um banner **"Encontramos N registros salvos…
+Migrar para a nuvem?"**. Um clique faz upsert em batch via
+`/api/migrate` e marca a flag `bim_migrated_to_cloud=true` no
+localStorage para não exibir de novo.
+
+### Schema
+
+Definido em `src/lib/db/schema.ts` (Drizzle). Para regenerar o SQL após
+mudanças:
+```bash
+npx drizzle-kit generate
+```
+> **Nota:** o `drizzle/init.sql` é um arquivo curado com índices, CHECK
+> constraint do status e trigger de `updated_at`, coisas que o
+> drizzle-kit não emite. Não é regenerado automaticamente.
 
 ---
 
-## 16. Problemas conhecidos e soluções
+## 16. Password gate (opcional)
+
+Enquanto a auth de usuário está em standby, dá pra proteger o domínio
+inteiro com HTTP Basic Auth via `src/middleware.ts`. Ative com env vars
+no Vercel:
+
+```env
+SITE_PASSWORD = sua-senha-forte
+SITE_USERNAME = admin   # opcional, default "admin"
+```
+
+- Sem `SITE_PASSWORD` → middleware é no-op (site aberto, comportamento padrão).
+- Com `SITE_PASSWORD` → o browser exibe o popup nativo de Basic Auth na
+  primeira visita. Após autenticar, fica cached na sessão.
+- Não bloqueia `/sw.js`, `/manifest.webmanifest`, ícones PWA e
+  `/_next/*` — sem isso a PWA não conseguiria carregar.
+
+Pode desativar a qualquer momento removendo a env var e fazendo
+redeploy.
+
+---
+
+## 17. Problemas conhecidos e soluções
 
 ### `supabaseUrl is required` no build
 

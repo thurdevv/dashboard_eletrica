@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Layers, Eye, EyeOff } from 'lucide-react'
-import { signIn, signUp, hasAnyUser, getCurrentSession, authMode } from '@/lib/auth'
+import { signIn, signUp, getCurrentSession, authMode } from '@/lib/auth'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -18,8 +18,7 @@ export default function LoginPage() {
   useEffect(() => {
     // Se já logado, vai para projetos
     if (getCurrentSession()) { router.replace('/projects'); return }
-    // Se não há nenhum usuário cadastrado, mostra registro
-    if (!hasAnyUser()) setIsRegister(true)
+    // Padrão é "Entrar"; usuário escolhe explicitamente cadastrar pelo link
   }, [router])
 
   async function handleSubmit(e: React.FormEvent) {
@@ -136,14 +135,12 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {hasAnyUser() && (
-            <button
-              onClick={() => { setIsRegister(!isRegister); setError(null) }}
-              className="w-full text-center text-xs text-neutral-500 hover:text-neutral-300 mt-4 transition-colors"
-            >
-              {isRegister ? 'Já tenho conta → Entrar' : 'Criar nova conta'}
-            </button>
-          )}
+          <button
+            onClick={() => { setIsRegister(!isRegister); setError(null) }}
+            className="w-full text-center text-xs text-neutral-500 hover:text-neutral-300 mt-4 transition-colors"
+          >
+            {isRegister ? 'Já tenho conta → Entrar' : 'Criar nova conta'}
+          </button>
         </div>
       </div>
     </div>

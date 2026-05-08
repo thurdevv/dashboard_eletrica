@@ -1,5 +1,7 @@
 import { zipSync, strToU8 } from 'fflate'
-import { supabase } from '@/lib/supabase/client'
+import { and, desc, eq, isNotNull } from 'drizzle-orm'
+import { db, isDatabaseReady } from '@/lib/db/client'
+import { executionRecords, type ExecutionRecordRow, type ExecutionRecordInsertRow } from '@/lib/db/schema'
 import {
   localGet, localGetAll, localUpsert, localGetLevels, localGetElementTypes,
   localExport, localImport, localGetDailyLog, localAddDailyEntry, localDeleteDailyEntry,
@@ -7,17 +9,33 @@ import {
 } from '@/lib/storage/local'
 import type { ExecutionRecord, ExecutionFormData, IFCElement, FilterState, DailyEntry, LoadedModel } from '@/types'
 
-function isSupabaseReady(): boolean {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
-  const key = process.env.NEXT_PUBLIC_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
-  return (
-    url.startsWith('https://') &&
-    !url.includes('YOUR_PROJECT') &&
-    !url.includes('your_project') &&
-    key.length > 10 &&
-    !key.includes('your-') &&
-    !key.includes('YOUR_')
-  )
+// ─── Row ↔ ExecutionRecord mappers ────────────────────────────
+// Banco usa snake_case + camelCase do Drizzle; o resto do app espera o
+// shape ExecutionRecord (snake_case).
+function rowToRecord(row: ExecutionRecordRow): ExecutionRecord {
+  return {
+    id:                row.id,
+    project_id:        row.projectId,
+    ifc_global_id:     row.ifcGlobalId,
+    element_name:      row.elementName ?? '',
+    element_type:      row.elementType ?? '',
+    level:             row.level ?? '',
+    status:            (row.status ?? 'NOT_STARTED') as ExecutionRecord['status'],
+    executed_quantity: Number(row.executedQuantity ?? 0),
+    team_size:         row.teamSize ?? 1,
+    worked_hours:      Number(row.workedHours ?? 0),
+    productivity:      Number(row.productivity ?? 0),
+    notes:             row.notes ?? '',
+    photo_url:          row.photoUrl ?? undefined,
+    element_screenshot: row.elementScreenshot ?? undefined,
+    element_length:     row.elementLength ?? undefined,
+    planned_start:      row.plannedStart ?? undefined,
+    planned_end:        row.plannedEnd ?? undefined,
+    planned_quantity:   row.plannedQuantity ?? undefined,
+    updated_by:         row.updatedBy ?? undefined,
+    created_at:         row.createdAt?.toISOString(),
+    updated_at:         row.updatedAt?.toISOString(),
+  }
 }
 
 // ─── Fetch one record ─────────────────────────────────────────
@@ -25,18 +43,19 @@ export async function getExecutionRecord(
   projectId: string,
   ifcGlobalId: string,
 ): Promise<ExecutionRecord | null> {
-  if (!isSupabaseReady()) return localGet(projectId, ifcGlobalId)
+  if (!isDatabaseReady()) return localGet(projectId, ifcGlobalId)
 
   try {
-    const { data, error } = await supabase
-      .from('execution_records')
-      .select('*')
-      .eq('project_id', projectId)
-      .eq('ifc_global_id', ifcGlobalId)
-      .maybeSingle()
+    const rows = await db
+      .select()
+      .from(executionRecords)
+      .where(and(
+        eq(executionRecords.projectId, projectId),
+        eq(executionRecords.ifcGlobalId, ifcGlobalId),
+      ))
+      .limit(1)
 
-    if (error) throw error
-    return data
+    return rows[0] ? rowToRecord(rows[0]) : null
   } catch {
     return localGet(projectId, ifcGlobalId)
   }
@@ -47,22 +66,21 @@ export async function getProjectRecords(
   projectId: string,
   filters?: Partial<FilterState>,
 ): Promise<ExecutionRecord[]> {
-  if (!isSupabaseReady()) return localGetAll(projectId, filters)
+  if (!isDatabaseReady()) return localGetAll(projectId, filters)
 
   try {
-    let query = supabase
-      .from('execution_records')
-      .select('*')
-      .eq('project_id', projectId)
-      .order('created_at', { ascending: false })
+    const conditions = [eq(executionRecords.projectId, projectId)]
+    if (filters?.status && filters.status !== 'ALL') conditions.push(eq(executionRecords.status, filters.status))
+    if (filters?.level)                               conditions.push(eq(executionRecords.level, filters.level))
+    if (filters?.elementType)                         conditions.push(eq(executionRecords.elementType, filters.elementType))
 
-    if (filters?.status && filters.status !== 'ALL') query = query.eq('status', filters.status)
-    if (filters?.level)                               query = query.eq('level', filters.level)
-    if (filters?.elementType)                         query = query.eq('element_type', filters.elementType)
+    const rows = await db
+      .select()
+      .from(executionRecords)
+      .where(and(...conditions))
+      .orderBy(desc(executionRecords.createdAt))
 
-    const { data, error } = await query
-    if (error) throw error
-    return data ?? []
+    return rows.map(rowToRecord)
   } catch {
     return localGetAll(projectId, filters)
   }
@@ -76,39 +94,59 @@ export async function upsertExecutionRecord(
   photoUrl?: string,
   changedBy: string = 'local',
 ): Promise<ExecutionRecord> {
-  if (!isSupabaseReady()) return localUpsert(projectId, element, form, photoUrl, changedBy)
+  if (!isDatabaseReady()) return localUpsert(projectId, element, form, photoUrl, changedBy)
+
+  const denom = form.team_size * form.worked_hours
+  const insertRow: ExecutionRecordInsertRow = {
+    projectId,
+    ifcGlobalId:      element.globalId,
+    elementName:      element.name,
+    elementType:      element.type,
+    level:            element.level,
+    status:           form.status,
+    executedQuantity: form.executed_quantity,
+    teamSize:         form.team_size,
+    workedHours:      form.worked_hours,
+    productivity:     denom > 0 ? form.executed_quantity / denom : 0,
+    notes:            form.notes,
+    photoUrl:         photoUrl ?? null,
+    elementScreenshot: element.screenshot ?? null,
+    elementLength:    element.length ?? null,
+    plannedStart:     form.planned_start ?? null,
+    plannedEnd:       form.planned_end ?? null,
+    plannedQuantity:  form.planned_quantity ?? null,
+    updatedBy:        changedBy,
+  }
 
   try {
-    const denom = form.team_size * form.worked_hours
-    const record = {
-      project_id:        projectId,
-      ifc_global_id:     element.globalId,
-      element_name:      element.name,
-      element_type:      element.type,
-      level:             element.level,
-      status:            form.status,
-      executed_quantity: form.executed_quantity,
-      team_size:         form.team_size,
-      worked_hours:      form.worked_hours,
-      productivity:      denom > 0 ? form.executed_quantity / denom : 0,
-      notes:              form.notes,
-      photo_url:          photoUrl,
-      element_screenshot: element.screenshot,
-      element_length:     element.length,
-      planned_start:      form.planned_start ?? null,
-      planned_end:        form.planned_end ?? null,
-      planned_quantity:   form.planned_quantity ?? null,
-      updated_by:         changedBy,
-    }
+    const [row] = await db
+      .insert(executionRecords)
+      .values(insertRow)
+      .onConflictDoUpdate({
+        target: [executionRecords.projectId, executionRecords.ifcGlobalId],
+        set: {
+          elementName:       insertRow.elementName,
+          elementType:       insertRow.elementType,
+          level:             insertRow.level,
+          status:            insertRow.status,
+          executedQuantity:  insertRow.executedQuantity,
+          teamSize:          insertRow.teamSize,
+          workedHours:       insertRow.workedHours,
+          productivity:      insertRow.productivity,
+          notes:             insertRow.notes,
+          photoUrl:          insertRow.photoUrl,
+          elementScreenshot: insertRow.elementScreenshot,
+          elementLength:     insertRow.elementLength,
+          plannedStart:      insertRow.plannedStart,
+          plannedEnd:        insertRow.plannedEnd,
+          plannedQuantity:   insertRow.plannedQuantity,
+          updatedBy:         insertRow.updatedBy,
+          updatedAt:         new Date(),
+        },
+      })
+      .returning()
 
-    const { data, error } = await supabase
-      .from('execution_records')
-      .upsert(record, { onConflict: 'project_id,ifc_global_id' })
-      .select()
-      .single()
-
-    if (error) throw error
-    return data
+    return rowToRecord(row)
   } catch {
     return localUpsert(projectId, element, form, photoUrl, changedBy)
   }
@@ -139,31 +177,14 @@ function compressPhoto(file: File): Promise<string> {
   })
 }
 
-// ─── Upload photo ─────────────────────────────────────────────
+// ─── Upload photo (sempre base64 — Neon armazena como TEXT) ───
+// Retorna a data URL JPEG comprimida pronta para gravar em photo_url.
 export async function uploadExecutionPhoto(
-  projectId: string,
-  globalId: string,
+  _projectId: string,
+  _globalId: string,
   file: File,
 ): Promise<string> {
-  if (!isSupabaseReady()) {
-    return compressPhoto(file)
-  }
-
-  try {
-    const ext  = file.name.split('.').pop()
-    const path = `${projectId}/${globalId}/${Date.now()}.${ext}`
-
-    const { error } = await supabase.storage
-      .from('execution-photos')
-      .upload(path, file, { upsert: true })
-
-    if (error) throw error
-
-    const { data } = supabase.storage.from('execution-photos').getPublicUrl(path)
-    return data.publicUrl
-  } catch {
-    return compressPhoto(file)
-  }
+  return compressPhoto(file)
 }
 
 // ─── Daily progress log ───────────────────────────────────────
@@ -229,18 +250,18 @@ export function importProgressBundle(projectId: string, progressJson: string): n
 
 // ─── Distinct levels ──────────────────────────────────────────
 export async function getProjectLevels(projectId: string): Promise<string[]> {
-  if (!isSupabaseReady()) return localGetLevels(projectId)
+  if (!isDatabaseReady()) return localGetLevels(projectId)
 
   try {
-    const { data, error } = await supabase
-      .from('execution_records')
-      .select('level')
-      .eq('project_id', projectId)
-      .not('level', 'is', null)
+    const rows = await db
+      .selectDistinct({ level: executionRecords.level })
+      .from(executionRecords)
+      .where(and(
+        eq(executionRecords.projectId, projectId),
+        isNotNull(executionRecords.level),
+      ))
 
-    if (error) throw error
-    const rows = (data ?? []) as Array<{ level: string | null }>
-    return [...new Set(rows.map((r) => r.level).filter(Boolean) as string[])].sort()
+    return rows.map((r) => r.level).filter(Boolean).sort() as string[]
   } catch {
     return localGetLevels(projectId)
   }
@@ -248,18 +269,18 @@ export async function getProjectLevels(projectId: string): Promise<string[]> {
 
 // ─── Distinct element types ───────────────────────────────────
 export async function getProjectElementTypes(projectId: string): Promise<string[]> {
-  if (!isSupabaseReady()) return localGetElementTypes(projectId)
+  if (!isDatabaseReady()) return localGetElementTypes(projectId)
 
   try {
-    const { data, error } = await supabase
-      .from('execution_records')
-      .select('element_type')
-      .eq('project_id', projectId)
-      .not('element_type', 'is', null)
+    const rows = await db
+      .selectDistinct({ elementType: executionRecords.elementType })
+      .from(executionRecords)
+      .where(and(
+        eq(executionRecords.projectId, projectId),
+        isNotNull(executionRecords.elementType),
+      ))
 
-    if (error) throw error
-    const rows = (data ?? []) as Array<{ element_type: string | null }>
-    return [...new Set(rows.map((r) => r.element_type).filter(Boolean) as string[])].sort()
+    return rows.map((r) => r.elementType).filter(Boolean).sort() as string[]
   } catch {
     return localGetElementTypes(projectId)
   }

@@ -6,6 +6,7 @@ import { Layers, Plus, Trash2, FolderOpen, LogOut, ChevronRight } from 'lucide-r
 import { getCurrentSession, logout } from '@/lib/auth'
 import { getProjects, createProject, deleteProject } from '@/lib/projects'
 import DriveProjectPicker from '@/components/ui/DriveProjectPicker'
+import CloudMigrationBanner from '@/components/ui/CloudMigrationBanner'
 import type { Project } from '@/types'
 
 export default function ProjectsPage() {
@@ -73,6 +74,8 @@ export default function ProjectsPage() {
       </header>
 
       <main className="max-w-2xl mx-auto p-5">
+
+        <CloudMigrationBanner />
 
         {/* Título + botões */}
         <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
