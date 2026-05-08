@@ -1,5 +1,32 @@
 export type ExecutionStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED' | 'ISSUE'
 
+// ─── Checklist por elemento elétrico ──────────────────────────
+// Itens curados a partir das etapas típicas de instalação. Todos opcionais
+// — um elemento pode não exigir todos (ex: comprimento extraído do IFC já
+// conta como instalado/fixado dependendo do caso). Os campos são gravados
+// como `checklist jsonb` no Postgres e serializados direto em localStorage.
+export interface ExecutionChecklist {
+  installed?:    boolean   // instalado fisicamente
+  fastened?:     boolean   // fixado / suportado
+  identified?:   boolean   // etiqueta / identificação visível
+  tested?:       boolean   // testado (continuidade, isolação, energização)
+  approved?:     boolean   // aprovado por inspeção
+  photoAttached?: boolean  // foto anexada (auto-marcado quando há photo_url)
+}
+
+export const CHECKLIST_LABELS: Record<keyof ExecutionChecklist, string> = {
+  installed:     'Instalado',
+  fastened:      'Fixado',
+  identified:    'Identificado',
+  tested:        'Testado',
+  approved:      'Aprovado',
+  photoAttached: 'Foto anexada',
+}
+
+export const CHECKLIST_KEYS: ReadonlyArray<keyof ExecutionChecklist> = [
+  'installed', 'fastened', 'identified', 'tested', 'approved', 'photoAttached',
+]
+
 export interface DailyEntry {
   id:      string
   date:    string    // YYYY-MM-DD
@@ -51,6 +78,7 @@ export interface ExecutionRecord {
   element_screenshot?: string   // data URL do canvas xeokit quando elemento foi selecionado
   element_length?:     number   // comprimento do elemento (IFC)
   daily_log?:          DailyEntry[]
+  checklist?:          ExecutionChecklist  // checklist por elemento elétrico
   planned_start?:      string   // YYYY-MM-DD — data prevista de início
   planned_end?:        string   // YYYY-MM-DD — data prevista de término
   planned_quantity?:   number   // quantitativo planejado (para curva S)
@@ -124,6 +152,7 @@ export interface ExecutionFormData {
   worked_hours: number
   notes: string
   photo?: File | null
+  checklist?: ExecutionChecklist
   planned_start?: string
   planned_end?: string
   planned_quantity?: number

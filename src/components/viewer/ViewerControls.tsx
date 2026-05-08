@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Search, Layers, Eye, Home, FolderOpen, Download, Loader2, Archive } from 'lucide-react'
+import { Search, Layers, Eye, Home, FolderOpen, Download, Loader2, Archive, ListFilter } from 'lucide-react'
 import type { LoadedModel } from '@/types'
 
 interface ViewerControlsProps {
@@ -13,6 +13,8 @@ interface ViewerControlsProps {
   onResetCamera?:      () => void
   onChangeModel?:      () => void
   onExportWithProgress?: () => Promise<void>
+  onToggleElementList?: () => void   // abre/fecha painel de lista filtrada de elementos
+  elementListOpen?:    boolean
 }
 
 export default function ViewerControls({
@@ -24,6 +26,8 @@ export default function ViewerControls({
   onResetCamera,
   onChangeModel,
   onExportWithProgress,
+  onToggleElementList,
+  elementListOpen,
 }: ViewerControlsProps) {
   const [searchValue,    setSearchValue]    = useState('')
   const [selectedLevel,  setSelectedLevel]  = useState<string>('')
@@ -110,6 +114,22 @@ export default function ViewerControls({
         >
           <Eye className="w-4 h-4" />
         </button>
+
+        {/* Toggle lista filtrada de elementos (busca melhor) */}
+        {onToggleElementList && (
+          <button
+            onClick={onToggleElementList}
+            title="Lista de elementos filtrados"
+            aria-label="Abrir lista de elementos filtrados"
+            aria-pressed={elementListOpen}
+            className={`p-1.5 rounded transition-colors
+              ${elementListOpen
+                ? 'bg-blue-600 text-white'
+                : 'bg-neutral-700 hover:bg-neutral-600 text-neutral-300'}`}
+          >
+            <ListFilter className="w-4 h-4" />
+          </button>
+        )}
 
         {/* Reset camera */}
         {onResetCamera && (

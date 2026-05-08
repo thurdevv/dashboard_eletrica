@@ -1,11 +1,11 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Upload, Save, Loader2, Camera, Plus, Trash2, Ruler } from 'lucide-react'
+import { Upload, Save, Loader2, Camera, Plus, Trash2, Ruler, CheckSquare, Square } from 'lucide-react'
 import ProductivityCard from './ProductivityCard'
 import { getDailyLog, addDailyEntry, deleteDailyEntry } from '@/lib/api/execution'
-import type { ExecutionFormData, ExecutionRecord, ExecutionStatus, DailyEntry } from '@/types'
-import { STATUS_LABELS } from '@/types'
+import type { ExecutionFormData, ExecutionRecord, ExecutionStatus, DailyEntry, ExecutionChecklist } from '@/types'
+import { STATUS_LABELS, CHECKLIST_LABELS, CHECKLIST_KEYS } from '@/types'
 
 interface ProgressFormProps {
   initial?:       ExecutionRecord | null
@@ -44,6 +44,12 @@ export default function ProgressForm({ initial, onSave, saving, projectId, globa
   const [plannedStart,    setPlannedStart]    = useState(initial?.planned_start    ?? '')
   const [plannedEnd,      setPlannedEnd]      = useState(initial?.planned_end      ?? '')
   const [plannedQuantity, setPlannedQuantity] = useState<number>(initial?.planned_quantity ?? 0)
+
+  // Checklist
+  const [checklist, setChecklist] = useState<ExecutionChecklist>(initial?.checklist ?? {})
+  function toggleCheck(key: keyof ExecutionChecklist) {
+    setChecklist((c) => ({ ...c, [key]: !c[key] }))
+  }
 
   // daily log
   const [dailyLog,       setDailyLog]       = useState<DailyEntry[]>([])
@@ -99,6 +105,7 @@ export default function ProgressForm({ initial, onSave, saving, projectId, globa
     try {
       await onSave({
         status, executed_quantity: qty, team_size: team, worked_hours: hours, notes, photo,
+        checklist:        Object.keys(checklist).length > 0 ? checklist : undefined,
         planned_start:    plannedStart || undefined,
         planned_end:      plannedEnd || undefined,
         planned_quantity: plannedQuantity > 0 ? plannedQuantity : undefined,
@@ -126,7 +133,7 @@ export default function ProgressForm({ initial, onSave, saving, projectId, globa
         </div>
       )}
 
-      {/* Status */}
+      {/* Status — botões grandes para uso em obra (touch friendly no mobile) */}
       <div>
         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1.5">
           Status
@@ -134,12 +141,45 @@ export default function ProgressForm({ initial, onSave, saving, projectId, globa
         <div className="grid grid-cols-2 gap-2">
           {STATUSES.map((s) => (
             <button key={s} type="button" onClick={() => setStatus(s)}
-              className={`px-3 py-2 rounded-lg border-2 text-sm font-medium transition-all
+              aria-pressed={status === s}
+              className={`px-3 py-3 md:py-2 min-h-[52px] md:min-h-0 rounded-lg border-2 text-base md:text-sm font-semibold transition-all
                 ${STATUS_COLORS_CSS[s]}
-                ${status === s ? 'ring-2 ring-offset-1 ring-blue-400' : 'opacity-60 hover:opacity-90'}`}>
+                ${status === s ? 'ring-2 ring-offset-1 ring-blue-400 scale-[1.02]' : 'opacity-60 hover:opacity-90'}`}>
               {STATUS_LABELS[s]}
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* Checklist por elemento — itens típicos de instalação elétrica */}
+      <div>
+        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1.5">
+          Checklist
+        </label>
+        <div className="grid grid-cols-2 gap-1.5">
+          {CHECKLIST_KEYS.map((k) => {
+            const checked = !!checklist[k]
+            const isPhotoAuto = k === 'photoAttached'
+            return (
+              <button
+                key={k}
+                type="button"
+                onClick={() => !isPhotoAuto && toggleCheck(k)}
+                disabled={isPhotoAuto}
+                title={isPhotoAuto ? 'Marcado automaticamente quando há foto anexada' : undefined}
+                aria-pressed={checked}
+                className={`flex items-center gap-2 px-3 py-2.5 md:py-2 rounded-lg border text-sm font-medium transition-all text-left
+                  ${checked
+                    ? 'bg-green-50 border-green-300 text-green-800'
+                    : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-blue-300'}
+                  ${isPhotoAuto ? 'cursor-default opacity-90' : ''}`}>
+                {checked
+                  ? <CheckSquare className="w-4 h-4 text-green-600 flex-shrink-0" />
+                  : <Square className="w-4 h-4 text-gray-400 flex-shrink-0" />}
+                <span>{CHECKLIST_LABELS[k]}</span>
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -226,10 +266,10 @@ export default function ProgressForm({ initial, onSave, saving, projectId, globa
         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">
           {dailyLog.length > 0 ? 'Total Executado (m) — soma das entradas' : 'Quantidade Executada (m)'}
         </label>
-        <input type="number" min={0} step="0.01" value={qty}
+        <input type="number" min={0} step="0.01" value={qty} inputMode="decimal"
           onChange={(e) => setQty(parseFloat(e.target.value) || 0)}
           readOnly={dailyLog.length > 0}
-          className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400
+          className={`w-full border border-gray-300 rounded-lg px-3 py-3 md:py-2 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400
             ${dailyLog.length > 0 ? 'bg-gray-50 text-gray-500 cursor-not-allowed' : ''}`} />
         {dailyLog.length > 0 && (
           <p className="text-xs text-gray-400 mt-0.5">Calculado automaticamente pelo progresso diário.</p>
@@ -301,7 +341,7 @@ export default function ProgressForm({ initial, onSave, saving, projectId, globa
         </label>
         <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)}
           placeholder="Pendências, materiais usados, condições do local…"
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400" />
+          className="w-full border border-gray-300 rounded-lg px-3 py-3 md:py-2 text-base md:text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400" />
       </div>
 
       {/* Foto */}
@@ -346,7 +386,7 @@ export default function ProgressForm({ initial, onSave, saving, projectId, globa
       )}
 
       <button type="submit" disabled={saving}
-        className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-semibold py-2.5 rounded-lg transition-colors">
+        className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-semibold py-3 md:py-2.5 text-base md:text-sm rounded-lg transition-colors sticky bottom-0">
         {saving
           ? <><Loader2 className="w-4 h-4 animate-spin" /> Salvando…</>
           : <><Save className="w-4 h-4" /> Salvar Progresso</>}

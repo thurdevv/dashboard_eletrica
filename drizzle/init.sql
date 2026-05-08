@@ -29,6 +29,7 @@ create table if not exists execution_records (
   photo_url           text,
   element_screenshot  text,
   element_length      numeric,
+  checklist           jsonb,
   planned_start       date,
   planned_end         date,
   planned_quantity    numeric,

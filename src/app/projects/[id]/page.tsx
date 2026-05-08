@@ -4,10 +4,11 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { ArrowLeft, LogOut, BarChart3, MapPin, CalendarDays } from 'lucide-react'
+import { ArrowLeft, LogOut, BarChart3, MapPin, CalendarDays, CloudOff } from 'lucide-react'
 import DriveModelLoader from '@/components/viewer/DriveModelLoader'
 import ViewerControls from '@/components/viewer/ViewerControls'
 import ElementPanel from '@/components/panel/ElementPanel'
+import ElementListPanel from '@/components/panel/ElementListPanel'
 import FilterBar from '@/components/filters/FilterBar'
 import ProgressSummary from '@/components/ui/ProgressSummary'
 import ReportModal from '@/components/ui/ReportModal'
@@ -39,6 +40,7 @@ export default function ProjectViewerPage() {
   const [projectName,       setProjectName]       = useState('')
   const [username,          setUsername]          = useState('')
   const [pendingDriveSync,  setPendingDriveSync]  = useState(false)
+  const [elementListOpen,   setElementListOpen]   = useState(false)
 
   const viewerControlsRef  = useRef<ReturnType<typeof useXeokit> | null>(null)
   const importInputRef     = useRef<HTMLInputElement>(null)
@@ -75,6 +77,19 @@ export default function ProjectViewerPage() {
   useEffect(() => {
     if (selectedElement) setSheetOpen(true)
   }, [selectedElement])
+
+  // Avisa antes de sair/recarregar se há alterações ainda não enviadas ao Drive.
+  // O browser ignora a string custom em browsers modernos, mas exibe seu próprio
+  // diálogo "Tem certeza que deseja sair?" — basta retornar/setar returnValue.
+  useEffect(() => {
+    if (!pendingDriveSync) return
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [pendingDriveSync])
 
   // Quando o modelo é carregado com progresso embutido (ZIP com progresso.json), restaura tudo
   const handleModelLoad = useCallback(async (model: LoadedModel) => {
@@ -183,6 +198,12 @@ export default function ProjectViewerPage() {
         </div>
 
         <div className="flex items-center gap-1.5 md:gap-2">
+          {pendingDriveSync && (
+            <span title="Há alterações locais ainda não sincronizadas com o Drive"
+              className="hidden md:inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-700">
+              <CloudOff className="w-3 h-3" /> Pendente sync
+            </span>
+          )}
           <span className="text-xs text-neutral-400 mr-1 hidden md:inline">{records.length} registros</span>
 
           <input ref={importInputRef} type="file" accept=".json" className="hidden" onChange={handleImport} />
@@ -258,6 +279,8 @@ export default function ProjectViewerPage() {
               setLoadedModel(null); setSelectedElement(null); setCurrent(null)
             }}
             onExportWithProgress={handleExportWithProgress}
+            onToggleElementList={() => setElementListOpen((v) => !v)}
+            elementListOpen={elementListOpen}
           />
           <div className="flex-1 overflow-hidden">
             <BIMViewer
@@ -271,12 +294,29 @@ export default function ProjectViewerPage() {
           </div>
         </div>
 
-        {/* Desktop: painel lateral */}
+        {/* Desktop: painel lateral de lista filtrada (#4) — fica entre viewer e ElementPanel */}
+        {elementListOpen && (
+          <aside className="hidden md:block w-72 flex-shrink-0 border-l border-gray-200 overflow-hidden">
+            <ElementListPanel
+              records={records}
+              allRecords={allRecords}
+              levels={levels}
+              elementTypes={elementTypes}
+              filters={filters}
+              onFiltersChange={setFilters}
+              onZoomTo={(id) => viewerControlsRef.current?.zoomTo(id)}
+              onClose={() => setElementListOpen(false)}
+            />
+          </aside>
+        )}
+
+        {/* Desktop: painel lateral do elemento */}
         <aside className="hidden md:block w-80 flex-shrink-0 bg-white border-l border-gray-200 overflow-y-auto">
           <ElementPanel
             element={selectedElement}
             record={current}
             saving={saving}
+            pendingSync={pendingDriveSync}
             onClose={handleClose}
             onZoomTo={(id) => viewerControlsRef.current?.zoomTo(id)}
             onSave={handleSave}
@@ -326,6 +366,7 @@ export default function ProjectViewerPage() {
               element={selectedElement}
               record={current}
               saving={saving}
+              pendingSync={pendingDriveSync}
               onClose={handleClose}
               onZoomTo={(id) => { viewerControlsRef.current?.zoomTo(id); handleClose() }}
               onSave={handleSave}

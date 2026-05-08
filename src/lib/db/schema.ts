@@ -1,4 +1,5 @@
-import { pgTable, uuid, text, numeric, integer, timestamp, date, unique } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, numeric, integer, timestamp, date, jsonb, unique } from 'drizzle-orm/pg-core'
+import type { ExecutionChecklist } from '@/types'
 
 // ─── execution_records ────────────────────────────────────────
 // Tabela principal de progresso por elemento BIM.
@@ -22,6 +23,7 @@ export const executionRecords = pgTable(
     photoUrl:         text('photo_url'),
     elementScreenshot: text('element_screenshot'),
     elementLength:    numeric('element_length', { mode: 'number' }),
+    checklist:        jsonb('checklist').$type<ExecutionChecklist>(),
     plannedStart:     date('planned_start'),
     plannedEnd:       date('planned_end'),
     plannedQuantity:  numeric('planned_quantity', { mode: 'number' }),

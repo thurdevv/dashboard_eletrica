@@ -1,26 +1,27 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { X, ZoomIn, Tag, Layers, Box, Hash, Ruler } from 'lucide-react'
+import { X, ZoomIn, Tag, Layers, Box, Hash, Ruler, CheckSquare, Square, CloudOff } from 'lucide-react'
 import ProgressForm from './ProgressForm'
 import CommentsTab from './CommentsTab'
 import HistoryTab from './HistoryTab'
 import type { IFCElement, ExecutionRecord, ExecutionFormData } from '@/types'
-import { STATUS_LABELS, STATUS_BADGE_CLASS } from '@/types'
+import { STATUS_LABELS, STATUS_BADGE_CLASS, CHECKLIST_LABELS, CHECKLIST_KEYS } from '@/types'
 
 type Tab = 'info' | 'form' | 'comments' | 'history'
 
 interface ElementPanelProps {
-  element:    IFCElement | null
-  record:     ExecutionRecord | null
-  saving:     boolean
-  onClose:    () => void
-  onZoomTo:   (globalId: string) => void
-  onSave:     (form: ExecutionFormData) => Promise<void>
-  projectId?: string
+  element:      IFCElement | null
+  record:       ExecutionRecord | null
+  saving:       boolean
+  pendingSync?: boolean   // true quando há alteração local não enviada ao Drive
+  onClose:      () => void
+  onZoomTo:     (globalId: string) => void
+  onSave:       (form: ExecutionFormData) => Promise<void>
+  projectId?:   string
 }
 
-export default function ElementPanel({ element, record, saving, onClose, onZoomTo, onSave, projectId }: ElementPanelProps) {
+export default function ElementPanel({ element, record, saving, pendingSync, onClose, onZoomTo, onSave, projectId }: ElementPanelProps) {
   const [tab, setTab] = useState<Tab>('info')
 
   useEffect(() => {
@@ -41,7 +42,23 @@ export default function ElementPanel({ element, record, saving, onClose, onZoomT
       {/* Header */}
       <div className="flex items-start justify-between px-4 pt-4 pb-3 border-b border-gray-200">
         <div className="flex-1 min-w-0">
-          <p className="text-xs text-gray-400 uppercase tracking-wider mb-0.5">Elemento Selecionado</p>
+          <div className="flex items-center gap-2 mb-0.5">
+            <p className="text-xs text-gray-400 uppercase tracking-wider">Elemento Selecionado</p>
+            {/* Badge de estado de sync — Salvo localmente / Pendente de sincronizar */}
+            {record && (
+              pendingSync ? (
+                <span title="Há alterações que ainda não foram enviadas ao Drive"
+                  className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">
+                  <CloudOff className="w-3 h-3" /> Pendente sync
+                </span>
+              ) : (
+                <span title="Salvo localmente (e sincronizado com Drive, se configurado)"
+                  className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-200">
+                  ✓ Salvo
+                </span>
+              )
+            )}
+          </div>
           <h2 className="font-bold text-gray-900 text-base leading-tight truncate" title={element.name}>
             {element.name}
           </h2>
@@ -140,6 +157,24 @@ export default function ElementPanel({ element, record, saving, onClose, onZoomT
                   <Stat label="Horas"         value={record.worked_hours}      />
                   <Stat label="m/Hh"          value={record.productivity?.toFixed(3) ?? '—'} />
                 </div>
+                {record.checklist && Object.values(record.checklist).some(Boolean) && (
+                  <div className="mt-1">
+                    <p className="text-xs font-semibold text-gray-400 mb-1">Checklist</p>
+                    <div className="grid grid-cols-2 gap-1">
+                      {CHECKLIST_KEYS.map((k) => {
+                        const checked = !!record.checklist?.[k]
+                        return (
+                          <div key={k} className={`flex items-center gap-1.5 text-xs ${checked ? 'text-green-700' : 'text-gray-400'}`}>
+                            {checked
+                              ? <CheckSquare className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+                              : <Square className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />}
+                            <span>{CHECKLIST_LABELS[k]}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
                 {record.daily_log && record.daily_log.length > 0 && (
                   <div className="mt-1">
                     <p className="text-xs font-semibold text-gray-400 mb-1">Progresso diário</p>

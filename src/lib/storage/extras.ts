@@ -159,6 +159,15 @@ export function appendHistory(
     for (const f of trackedFields) {
       if (prev[f] !== next[f]) changes[f as string] = { from: prev[f], to: next[f] }
     }
+    // Diff do checklist — itens individuais aparecem como "checklist.installed", etc.
+    const prevCk = prev.checklist ?? {}
+    const nextCk = next.checklist ?? {}
+    const allKeys = new Set([...Object.keys(prevCk), ...Object.keys(nextCk)])
+    for (const k of allKeys) {
+      const a = (prevCk as Record<string, unknown>)[k]
+      const b = (nextCk as Record<string, unknown>)[k]
+      if (a !== b) changes[`checklist.${k}`] = { from: a, to: b }
+    }
   }
   // Não grava se nada relevante mudou (e há um prev)
   if (prev && Object.keys(changes).length === 0) {

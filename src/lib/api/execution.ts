@@ -7,7 +7,7 @@ import {
   localExport, localImport, localGetDailyLog, localAddDailyEntry, localDeleteDailyEntry,
   localBuildBundle, localRestoreBundle,
 } from '@/lib/storage/local'
-import type { ExecutionRecord, ExecutionFormData, IFCElement, FilterState, DailyEntry, LoadedModel } from '@/types'
+import type { ExecutionRecord, ExecutionFormData, IFCElement, FilterState, DailyEntry, LoadedModel, ExecutionChecklist } from '@/types'
 
 // ─── Row ↔ ExecutionRecord mappers ────────────────────────────
 // Banco usa snake_case + camelCase do Drizzle; o resto do app espera o
@@ -29,6 +29,7 @@ function rowToRecord(row: ExecutionRecordRow): ExecutionRecord {
     photo_url:          row.photoUrl ?? undefined,
     element_screenshot: row.elementScreenshot ?? undefined,
     element_length:     row.elementLength ?? undefined,
+    checklist:          (row.checklist ?? undefined) as ExecutionChecklist | undefined,
     planned_start:      row.plannedStart ?? undefined,
     planned_end:        row.plannedEnd ?? undefined,
     planned_quantity:   row.plannedQuantity ?? undefined,
@@ -36,6 +37,19 @@ function rowToRecord(row: ExecutionRecordRow): ExecutionRecord {
     created_at:         row.createdAt?.toISOString(),
     updated_at:         row.updatedAt?.toISOString(),
   }
+}
+
+// Faz merge de checklist novo (do form) com o existente. photoAttached
+// é auto-marcado quando há photo_url. Mantém em sincronia com mergeChecklist
+// do storage local pra que Neon e localStorage produzam o mesmo resultado.
+function buildChecklist(
+  existing: ExecutionChecklist | undefined,
+  fromForm: ExecutionChecklist | undefined,
+  hasPhoto: string | undefined,
+): ExecutionChecklist | null {
+  const next: ExecutionChecklist = { ...(existing ?? {}), ...(fromForm ?? {}) }
+  if (hasPhoto) next.photoAttached = true
+  return Object.keys(next).length > 0 ? next : null
 }
 
 // ─── Fetch one record ─────────────────────────────────────────
@@ -96,7 +110,15 @@ export async function upsertExecutionRecord(
 ): Promise<ExecutionRecord> {
   if (!isDatabaseReady()) return localUpsert(projectId, element, form, photoUrl, changedBy)
 
-  const denom = form.team_size * form.worked_hours
+  // Lê o registro atual pra preservar checklist já marcado (Neon não tem
+  // operador de "merge jsonb" simples — fazemos no app code).
+  let existing: ExecutionRecord | null = null
+  try { existing = await getExecutionRecord(projectId, element.globalId) } catch { /* segue sem prev */ }
+
+  const denom    = form.team_size * form.worked_hours
+  const photoFinal = photoUrl ?? existing?.photo_url
+  const checklist = buildChecklist(existing?.checklist, form.checklist, photoFinal)
+
   const insertRow: ExecutionRecordInsertRow = {
     projectId,
     ifcGlobalId:      element.globalId,
@@ -112,6 +134,7 @@ export async function upsertExecutionRecord(
     photoUrl:         photoUrl ?? null,
     elementScreenshot: element.screenshot ?? null,
     elementLength:    element.length ?? null,
+    checklist,
     plannedStart:     form.planned_start ?? null,
     plannedEnd:       form.planned_end ?? null,
     plannedQuantity:  form.planned_quantity ?? null,
@@ -137,6 +160,7 @@ export async function upsertExecutionRecord(
           photoUrl:          insertRow.photoUrl,
           elementScreenshot: insertRow.elementScreenshot,
           elementLength:     insertRow.elementLength,
+          checklist:         insertRow.checklist,
           plannedStart:      insertRow.plannedStart,
           plannedEnd:        insertRow.plannedEnd,
           plannedQuantity:   insertRow.plannedQuantity,

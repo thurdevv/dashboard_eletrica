@@ -3,8 +3,21 @@
  * Mesma interface da API do Supabase para que a troca seja transparente.
  */
 
-import type { ExecutionRecord, ExecutionFormData, IFCElement, FilterState, DailyEntry } from '@/types'
+import type { ExecutionRecord, ExecutionFormData, IFCElement, FilterState, DailyEntry, ExecutionChecklist } from '@/types'
 import { appendHistory } from './extras'
+
+// Faz merge entre checklist antigo e novo do form. Marca photoAttached
+// automaticamente quando há foto vinculada ao registro (foto explícita
+// no form ou photo_url já salva).
+function mergeChecklist(
+  existing: ExecutionChecklist | undefined,
+  fromForm: ExecutionChecklist | undefined,
+  hasPhoto: string | undefined,
+): ExecutionChecklist | undefined {
+  const next: ExecutionChecklist = { ...(existing ?? {}), ...(fromForm ?? {}) }
+  if (hasPhoto) next.photoAttached = true
+  return Object.keys(next).length > 0 ? next : undefined
+}
 
 const PREFIX = 'bim_exec'
 
@@ -66,6 +79,7 @@ export function localUpsert(
     planned_start:      form.planned_start ?? existing?.planned_start,
     planned_end:        form.planned_end ?? existing?.planned_end,
     planned_quantity:   form.planned_quantity ?? existing?.planned_quantity,
+    checklist:          mergeChecklist(existing?.checklist, form.checklist, photoUrl ?? existing?.photo_url),
     daily_log:          existing?.daily_log,   // preserved; managed separately
     created_at:         existing?.created_at ?? now,
     updated_at:         now,
@@ -177,14 +191,46 @@ export interface ProgressBundle {
   exportedAt:  string
   records:     ExecutionRecord[]
   dailyLogs:   Record<string, DailyEntry[]>
+  history?:    Record<string, unknown[]>   // histórico por globalId — preservado entre exports
+}
+
+const HISTORY_PREFIX = 'bim_history'
+
+function localGetAllHistory(projectId: string): Record<string, unknown[]> {
+  if (typeof window === 'undefined') return {}
+  const prefix = `${HISTORY_PREFIX}_${projectId}_`
+  const out: Record<string, unknown[]> = {}
+  for (const k of Object.keys(localStorage)) {
+    if (!k.startsWith(prefix)) continue
+    const globalId = k.slice(prefix.length)
+    try {
+      const arr = JSON.parse(localStorage.getItem(k) ?? '[]')
+      if (Array.isArray(arr) && arr.length > 0) out[globalId] = arr
+    } catch { /* ignore */ }
+  }
+  return out
+}
+
+function localImportHistory(projectId: string, history: Record<string, unknown[]>) {
+  for (const [globalId, entries] of Object.entries(history)) {
+    if (!Array.isArray(entries) || entries.length === 0) continue
+    const k = `${HISTORY_PREFIX}_${projectId}_${globalId}`
+    // Não sobrescreve histórico existente — faz merge por id pra evitar duplicatas
+    let existing: any[] = []
+    try { existing = JSON.parse(localStorage.getItem(k) ?? '[]') } catch { /* ignore */ }
+    const seen = new Set(existing.map((e) => e?.id).filter(Boolean))
+    const merged = [...existing, ...entries.filter((e: any) => e?.id && !seen.has(e.id))]
+    localStorage.setItem(k, JSON.stringify(merged))
+  }
 }
 
 export function localBuildBundle(projectId: string): ProgressBundle {
   return {
-    version:    1,
+    version:    2,
     exportedAt: new Date().toISOString(),
     records:    localGetAll(projectId),
     dailyLogs:  localGetAllDailyLogs(projectId),
+    history:    localGetAllHistory(projectId),
   }
 }
 
@@ -195,6 +241,9 @@ export function localRestoreBundle(projectId: string, bundle: ProgressBundle): n
   }
   if (bundle.dailyLogs) {
     localImportDailyLogs(projectId, bundle.dailyLogs)
+  }
+  if (bundle.history) {
+    localImportHistory(projectId, bundle.history)
   }
   return bundle.records.length
 }
