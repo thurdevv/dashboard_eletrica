@@ -315,10 +315,38 @@ export function useXeokit({ canvasId, model, onElementSelect }: UseXeokitOptions
     viewer.cameraFlight.flyTo({ aabb: viewer.scene.aabb })
   }, [])
 
+  // Seleciona um elemento por GlobalId (usado por deep-links do QR Code).
+  // Faz zoom, marca como destacado e dispara onElementSelect (que abre o
+  // ElementPanel). Retorna true se encontrou; false se o globalId não está
+  // no modelo carregado.
+  const selectByGlobalId = useCallback((globalId: string): boolean => {
+    const viewer = viewerRef.current
+    if (!viewer) return false
+    const objectId = globalIdMapRef.current.get(globalId)
+    if (!objectId) return false
+
+    highlightObject(viewer, objectId, selectedObjRef.current)
+    selectedObjRef.current = objectId
+
+    const obj = viewer.scene.objects[objectId]
+    if (obj) viewer.cameraFlight.flyTo({ aabb: obj.aabb })
+
+    const element = extractIFCElement(
+      objectId,
+      viewer.scene.objects,
+      levelMapRef.current,
+      reverseMapRef.current,
+      viewer.metaScene?.metaObjects,
+    )
+    if (element) onElementSelect(element)
+    return !!element
+  }, [onElementSelect])
+
   return {
     isLoading, error, elementCount,
     modelLevels, measureActive,
     applyColors, zoomTo, isolateLevel, searchElement, resetCamera,
     toggleMeasure, clearMeasurements,
+    selectByGlobalId,
   }
 }

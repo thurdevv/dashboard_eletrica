@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { ArrowLeft, LogOut, BarChart3, MapPin, CalendarDays, CloudOff } from 'lucide-react'
+import { ArrowLeft, LogOut, BarChart3, MapPin, CalendarDays, CloudOff, QrCode } from 'lucide-react'
 import DriveModelLoader from '@/components/viewer/DriveModelLoader'
 import ViewerControls from '@/components/viewer/ViewerControls'
 import ElementPanel from '@/components/panel/ElementPanel'
@@ -12,7 +12,10 @@ import ElementListPanel from '@/components/panel/ElementListPanel'
 import FilterBar from '@/components/filters/FilterBar'
 import ProgressSummary from '@/components/ui/ProgressSummary'
 import ReportModal from '@/components/ui/ReportModal'
+import QRCodesModal from '@/components/ui/QRCodesModal'
 import DriveSync from '@/components/ui/DriveSync'
+import NotificationBell from '@/components/ui/NotificationBell'
+import { showNotification, broadcast, onBroadcast } from '@/lib/notifications'
 import { useExecution } from '@/hooks/useExecution'
 import { getProjectLevels, getProjectElementTypes, exportProjectData, importProjectData, exportModelWithProgress, importProgressBundle } from '@/lib/api/execution'
 import { getCurrentSession, logout } from '@/lib/auth'
@@ -25,9 +28,11 @@ import type { useXeokit } from '@/hooks/useXeokit'
 const BIMViewer = dynamic(() => import('@/components/viewer/BIMViewer'), { ssr: false })
 
 export default function ProjectViewerPage() {
-  const params = useParams()
-  const router = useRouter()
-  const projectId = params.id as string
+  const params       = useParams()
+  const router       = useRouter()
+  const searchParams = useSearchParams()
+  const projectId    = params.id as string
+  const deepLinkGlobalId = searchParams.get('element')
 
   const [loadedModel,       setLoadedModel]       = useState<LoadedModel | null>(null)
   const [selectedElement,   setSelectedElement]   = useState<IFCElement | null>(null)
@@ -35,6 +40,7 @@ export default function ProjectViewerPage() {
   const [levels,            setLevels]            = useState<string[]>([])
   const [elementTypes,      setElementTypes]      = useState<string[]>([])
   const [showReport,        setShowReport]        = useState(false)
+  const [showQR,            setShowQR]            = useState(false)
   const [modelElementCount, setModelElementCount] = useState(0)
   const [sheetOpen,         setSheetOpen]         = useState(false)
   const [projectName,       setProjectName]       = useState('')
@@ -77,6 +83,41 @@ export default function ProjectViewerPage() {
   useEffect(() => {
     if (selectedElement) setSheetOpen(true)
   }, [selectedElement])
+
+  // Deep-link via QR Code: ?element=<globalId> — espera o modelo carregar
+  // (modelElementCount > 0 indica que buildGlobalIdMap rodou) e dispara a
+  // seleção. selectByGlobalId já faz zoom + abre o ElementPanel via onSelect.
+  useEffect(() => {
+    if (!deepLinkGlobalId || modelElementCount === 0) return
+    const t = setTimeout(() => {
+      const found = viewerControlsRef.current?.selectByGlobalId(deepLinkGlobalId)
+      if (!found) {
+        // Não acha o elemento — provavelmente o QR é de outro modelo.
+        // Limpa a query param sem disparar reload pra evitar loop.
+        router.replace(`/projects/${projectId}`)
+      }
+    }, 300)   // pequeno delay pra dar tempo do colorizer aplicar
+    return () => clearTimeout(t)
+  }, [deepLinkGlobalId, modelElementCount, projectId, router])
+
+  // Escuta problemas reportados em outras abas (BroadcastChannel) — exibe
+  // notificação local e atualiza a lista. Só notifica se o problema é deste
+  // projeto e veio de outra aba (a aba que originou já mostra feedback no form).
+  useEffect(() => {
+    const off = onBroadcast((msg) => {
+      if (msg.type !== 'issue-reported' || msg.projectId !== projectId) return
+      const r = msg.record
+      showNotification({
+        title: '⚠ Problema reportado',
+        body:  `${r.element_name || 'Elemento'} · ${r.level || ''}\n${r.notes || ''}`.trim(),
+        tag:   `issue-${r.ifc_global_id}`,
+        url:   `/projects/${projectId}?element=${encodeURIComponent(r.ifc_global_id)}`,
+        requireInteraction: true,
+      })
+      loadAllRecords(filters)
+    })
+    return off
+  }, [projectId, filters]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Avisa antes de sair/recarregar se há alterações ainda não enviadas ao Drive.
   // O browser ignora a string custom em browsers modernos, mas exibe seu próprio
@@ -137,7 +178,28 @@ export default function ProjectViewerPage() {
     Promise.all([getProjectLevels(projectId), getProjectElementTypes(projectId)])
       .then(([lvls, types]) => { setLevels(lvls); setElementTypes(types) })
     setPendingDriveSync(true)   // marca que há dados novos para sincronizar
-  }, [selectedElement, saveRecord, loadAllRecords, filters, projectId])
+
+    // Notifica outras abas/devices se um problema foi reportado.
+    // Apenas quando o status mudou pra ISSUE (evita spam ao reeditar).
+    const wasIssue = current?.status === 'ISSUE'
+    if (form.status === 'ISSUE' && !wasIssue) {
+      const record = {
+        ...current,
+        project_id:    projectId,
+        ifc_global_id: selectedElement.globalId,
+        element_name:  selectedElement.name,
+        element_type:  selectedElement.type,
+        level:         selectedElement.level,
+        status:        form.status,
+        executed_quantity: form.executed_quantity,
+        team_size:     form.team_size,
+        worked_hours:  form.worked_hours,
+        notes:         form.notes,
+        productivity:  0,
+      }
+      broadcast({ type: 'issue-reported', projectId, record: record as any })
+    }
+  }, [selectedElement, saveRecord, loadAllRecords, filters, projectId, current])
 
   const handleClose = useCallback(() => {
     setSheetOpen(false)
@@ -219,6 +281,12 @@ export default function ProjectViewerPage() {
             className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-2 md:px-3 py-1.5 rounded-lg transition-colors">
             <span>📄</span><span className="hidden md:inline">Relatório</span>
           </button>
+          <button onClick={() => setShowQR(true)}
+            title="Gerar QR Codes para imprimir"
+            aria-label="Gerar QR Codes dos elementos"
+            className="flex items-center gap-1 bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold px-2 md:px-3 py-1.5 rounded-lg transition-colors">
+            <QrCode className="w-4 h-4" /><span className="hidden md:inline">QR Codes</span>
+          </button>
           <Link href={`/projects/${projectId}/dashboard`}
             aria-label="Abrir dashboard analítico"
             className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-2 md:px-3 py-1.5 rounded-lg transition-colors">
@@ -242,9 +310,19 @@ export default function ProjectViewerPage() {
               fileName={`${(projectName || loadedModel.name).replace(/\.(ifc|xkt)$/i, '')}.bim`}
               getZipBlob={getZipBlob}
               pendingSync={pendingDriveSync}
-              onSynced={() => setPendingDriveSync(false)}
+              onSynced={() => {
+                setPendingDriveSync(false)
+                broadcast({ type: 'sync-completed', projectId })
+                showNotification({
+                  title: '✓ Sincronizado com Drive',
+                  body:  'Backup atualizado.',
+                  tag:   'sync-done',
+                })
+              }}
             />
           )}
+
+          <NotificationBell />
 
           <button onClick={() => { logout(); router.replace('/login') }} title={`Sair (${username})`}
             aria-label={`Sair da conta ${username}`}
@@ -383,6 +461,17 @@ export default function ProjectViewerPage() {
           projectId={projectId}
           totalElements={modelElementCount}
           onClose={() => setShowReport(false)}
+        />
+      )}
+
+      {showQR && (
+        <QRCodesModal
+          projectId={projectId}
+          projectName={projectName}
+          records={allRecords}
+          levels={levels}
+          elementTypes={elementTypes}
+          onClose={() => setShowQR(false)}
         />
       )}
     </div>
