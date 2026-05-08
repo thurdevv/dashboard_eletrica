@@ -214,7 +214,7 @@ export async function exportModelWithProgress(
   files['progresso.json'] = strToU8(JSON.stringify(bundle, null, 2))
 
   const zipped = zipSync(files, { level: 1 })
-  return new Blob([zipped], { type: 'application/zip' })
+  return new Blob([zipped as BlobPart], { type: 'application/zip' })
 }
 
 // ─── Importar bundle de progresso embutido no ZIP ─────────────
@@ -239,7 +239,8 @@ export async function getProjectLevels(projectId: string): Promise<string[]> {
       .not('level', 'is', null)
 
     if (error) throw error
-    return [...new Set((data ?? []).map((r) => r.level).filter(Boolean))].sort()
+    const rows = (data ?? []) as Array<{ level: string | null }>
+    return [...new Set(rows.map((r) => r.level).filter(Boolean) as string[])].sort()
   } catch {
     return localGetLevels(projectId)
   }
@@ -257,7 +258,8 @@ export async function getProjectElementTypes(projectId: string): Promise<string[
       .not('element_type', 'is', null)
 
     if (error) throw error
-    return [...new Set((data ?? []).map((r) => r.element_type).filter(Boolean))].sort()
+    const rows = (data ?? []) as Array<{ element_type: string | null }>
+    return [...new Set(rows.map((r) => r.element_type).filter(Boolean) as string[])].sort()
   } catch {
     return localGetElementTypes(projectId)
   }

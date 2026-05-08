@@ -6,12 +6,16 @@ function getSupabaseClient() {
   return createClient(url || 'https://placeholder.supabase.co', key || 'placeholder-key')
 }
 
-let _client: ReturnType<typeof createClient> | null = null
+let _client: any = null
 
-export const supabase = new Proxy({} as ReturnType<typeof createClient>, {
+// Tipado como `any` de propósito: o cliente é um Proxy preguiçoso que pode
+// apontar para um placeholder durante o build sem variáveis de ambiente.
+// Os genéricos estritos do `@supabase/supabase-js` quebram a indireção via
+// `ReturnType<typeof createClient>` em TS recente.
+export const supabase: any = new Proxy({}, {
   get(_target, prop) {
     if (!_client) _client = getSupabaseClient()
-    return (_client as any)[prop]
+    return _client[prop]
   },
 })
 

@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
     }
 
     const xkt = xktBuffers[0]
-    return new NextResponse(xkt, {
+    return new NextResponse(xkt as BodyInit, {
       status: 200,
       headers: {
         'Content-Type':        'application/octet-stream',

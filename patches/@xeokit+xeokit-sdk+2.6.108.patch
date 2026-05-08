@@ -1,0 +1,13 @@
+diff --git a/node_modules/@xeokit/xeokit-sdk/types/plugins/lib/ui/index.d.ts b/node_modules/@xeokit/xeokit-sdk/types/plugins/lib/ui/index.d.ts
+index a735908..2cfa47e 100644
+--- a/node_modules/@xeokit/xeokit-sdk/types/plugins/lib/ui/index.d.ts
++++ b/node_modules/@xeokit/xeokit-sdk/types/plugins/lib/ui/index.d.ts
+@@ -15,6 +15,6 @@ type OnCommit<T> = (canvasPos: Vec2, worldPos: T | null) => void;
+ 
+ declare function touchPointSelector<T>(viewer: Viewer, pointerCircle: PointerCircle, ray2WorldPos: Ray2WorldPos<T>): (onCancel: OnCancel, onChange: OnChange<T>, onCommit: OnCommit<T>) => Cleanup;
+ 
+-export declare addMousePressListener(element: HTMLElement, onChange: (canvasPos: Vec2 | null) => void);
++export declare function addMousePressListener(element: HTMLElement, onChange: (canvasPos: Vec2 | null) => void): void;
+ 
+-export declare addTouchPressListener(element: HTMLElement, cameraControl: CameraControl, pointerCircle: PointerCircle, onChange: (canvasPos: Vec2 | null) => void);
++export declare function addTouchPressListener(element: HTMLElement, cameraControl: CameraControl, pointerCircle: PointerCircle, onChange: (canvasPos: Vec2 | null) => void): void;

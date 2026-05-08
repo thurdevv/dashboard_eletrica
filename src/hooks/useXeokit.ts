@@ -34,6 +34,8 @@ export function useXeokit({ canvasId, model, onElementSelect }: UseXeokitOptions
     setError(null)
 
     async function initViewer() {
+      const m = model
+      if (!m) return
       try {
         const [xeokitSdk, webIfcNs] = await Promise.all([
           import('@xeokit/xeokit-sdk'),
@@ -62,7 +64,7 @@ export function useXeokit({ canvasId, model, onElementSelect }: UseXeokitOptions
           canvasId:   `${canvasId}-navcube`,
           visible:    true,
           syncCamera: true,
-        })
+        } as any)
 
         if (DistanceMeasurementsPlugin) {
           // defaultAxisVisible: false → some o "fantasma" verde dos eixos X/Y/Z
@@ -80,7 +82,7 @@ export function useXeokit({ canvasId, model, onElementSelect }: UseXeokitOptions
 
         let loadedModel: any
 
-        if (model.type === 'ifc') {
+        if (m.type === 'ifc') {
           // Inicializa o WASM antes de passar ao plugin
           const IfcAPI = new WebIFC.IfcAPI()
           IfcAPI.SetWasmPath('/', true)   // true = caminho absoluto
@@ -90,25 +92,25 @@ export function useXeokit({ canvasId, model, onElementSelect }: UseXeokitOptions
             WebIFC,
             IfcAPI,
             wasmPath: '/',
-          })
+          } as any)
           // Usa ArrayBuffer direto para evitar bug de blob URL com cache-busting
           const loadParams: any = { id: 'model', edges: true }
-          if (model.data) {
-            loadParams.ifc = model.data
+          if (m.data) {
+            loadParams.ifc = m.data
           } else {
-            loadParams.src = model.url
+            loadParams.src = m.url
           }
           loadedModel = loader.load(loadParams)
         } else {
           const loader    = new XKTLoaderPlugin(viewer)
           const xktParams: any = { id: 'model', edges: true }
-          if (model.data) {
-            xktParams.xkt = model.data          // ArrayBuffer — evita bug de blob URL
+          if (m.data) {
+            xktParams.xkt = m.data          // ArrayBuffer — evita bug de blob URL
           } else {
-            xktParams.src          = model.url
-            xktParams.metaModelSrc = model.metaUrl
+            xktParams.src          = m.url
+            xktParams.metaModelSrc = m.metaUrl
           }
-          if (model.metaUrl && !model.data) xktParams.metaModelSrc = model.metaUrl
+          if (m.metaUrl && !m.data) xktParams.metaModelSrc = m.metaUrl
           loadedModel = loader.load(xktParams)
         }
 
