@@ -4,8 +4,8 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { ArrowLeft, LogOut, BarChart3, MapPin, CalendarDays, CloudOff, QrCode } from 'lucide-react'
-import DriveModelLoader from '@/components/viewer/DriveModelLoader'
+import { ArrowLeft, LogOut, BarChart3, MapPin, CalendarDays, QrCode } from 'lucide-react'
+import ModelUploader from '@/components/viewer/ModelUploader'
 import ViewerControls from '@/components/viewer/ViewerControls'
 import ElementPanel from '@/components/panel/ElementPanel'
 import ElementListPanel from '@/components/panel/ElementListPanel'
@@ -13,7 +13,6 @@ import FilterBar from '@/components/filters/FilterBar'
 import ProgressSummary from '@/components/ui/ProgressSummary'
 import ReportModal from '@/components/ui/ReportModal'
 import QRCodesModal from '@/components/ui/QRCodesModal'
-import DriveSync from '@/components/ui/DriveSync'
 import NotificationBell from '@/components/ui/NotificationBell'
 import { showNotification, broadcast, onBroadcast } from '@/lib/notifications'
 import { useExecution } from '@/hooks/useExecution'
@@ -21,7 +20,6 @@ import { getProjectLevels, getProjectElementTypes, exportProjectData, importProj
 import { getCurrentSession, logout } from '@/lib/auth'
 import { getProject } from '@/lib/projects'
 import { deleteModelCache, loadModelCache } from '@/lib/storage/modelCache'
-import { clearDriveMeta } from '@/lib/storage/driveSync'
 import type { IFCElement, ExecutionFormData, FilterState, LoadedModel } from '@/types'
 import type { useXeokit } from '@/hooks/useXeokit'
 
@@ -45,7 +43,6 @@ export default function ProjectViewerPage() {
   const [sheetOpen,         setSheetOpen]         = useState(false)
   const [projectName,       setProjectName]       = useState('')
   const [username,          setUsername]          = useState('')
-  const [pendingDriveSync,  setPendingDriveSync]  = useState(false)
   const [elementListOpen,   setElementListOpen]   = useState(false)
 
   const viewerControlsRef  = useRef<ReturnType<typeof useXeokit> | null>(null)
@@ -61,8 +58,7 @@ export default function ProjectViewerPage() {
     setUsername(session.username)
 
     const project = getProject(projectId)
-    if (!project) { router.replace('/projects'); return }
-    setProjectName(project.name)
+    setProjectName(project?.name ?? 'Projeto')
 
     loadAllRecords()
     Promise.all([getProjectLevels(projectId), getProjectElementTypes(projectId)])
@@ -119,19 +115,6 @@ export default function ProjectViewerPage() {
     return off
   }, [projectId, filters]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Avisa antes de sair/recarregar se há alterações ainda não enviadas ao Drive.
-  // O browser ignora a string custom em browsers modernos, mas exibe seu próprio
-  // diálogo "Tem certeza que deseja sair?" — basta retornar/setar returnValue.
-  useEffect(() => {
-    if (!pendingDriveSync) return
-    function onBeforeUnload(e: BeforeUnloadEvent) {
-      e.preventDefault()
-      e.returnValue = ''
-    }
-    window.addEventListener('beforeunload', onBeforeUnload)
-    return () => window.removeEventListener('beforeunload', onBeforeUnload)
-  }, [pendingDriveSync])
-
   // Quando o modelo é carregado com progresso embutido (ZIP com progresso.json), restaura tudo
   const handleModelLoad = useCallback(async (model: LoadedModel) => {
     loadedModelRef.current = model
@@ -144,14 +127,10 @@ export default function ProjectViewerPage() {
         setTimeout(() => alert(`✓ ${count} registros de progresso restaurados do arquivo.`), 500)
       }
     }
+    const cached = getProject(projectId)
+    if (cached?.name) setProjectName(cached.name)
     setLoadedModel(model)
   }, [projectId, loadAllRecords, filters]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const getZipBlob = useCallback(async (): Promise<Blob> => {
-    const model = loadedModelRef.current ?? loadedModel
-    if (!model) throw new Error('Modelo não carregado')
-    return exportModelWithProgress(model, projectId)
-  }, [loadedModel, projectId])
 
   const handleExportWithProgress = useCallback(async () => {
     const model = loadedModelRef.current ?? loadedModel
@@ -177,7 +156,6 @@ export default function ProjectViewerPage() {
     await loadAllRecords(filters)
     Promise.all([getProjectLevels(projectId), getProjectElementTypes(projectId)])
       .then(([lvls, types]) => { setLevels(lvls); setElementTypes(types) })
-    setPendingDriveSync(true)   // marca que há dados novos para sincronizar
 
     // Notifica outras abas/devices se um problema foi reportado.
     // Apenas quando o status mudou pra ISSUE (evita spam ao reeditar).
@@ -237,7 +215,7 @@ export default function ProjectViewerPage() {
   }, [filters, projectId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!loadedModel) {
-    return <DriveModelLoader projectId={projectId} onModelLoad={handleModelLoad} />
+    return <ModelUploader projectId={projectId} onModelLoad={handleModelLoad} />
   }
 
   return (
@@ -260,12 +238,6 @@ export default function ProjectViewerPage() {
         </div>
 
         <div className="flex items-center gap-1.5 md:gap-2">
-          {pendingDriveSync && (
-            <span title="Há alterações locais ainda não sincronizadas com o Drive"
-              className="hidden md:inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-700">
-              <CloudOff className="w-3 h-3" /> Pendente sync
-            </span>
-          )}
           <span className="text-xs text-neutral-400 mr-1 hidden md:inline">{records.length} registros</span>
 
           <input ref={importInputRef} type="file" accept=".json" className="hidden" onChange={handleImport} />
@@ -303,25 +275,6 @@ export default function ProjectViewerPage() {
             <CalendarDays className="w-4 h-4" /><span className="hidden md:inline">Cronograma</span>
           </Link>
 
-          {/* Sincronização com Google Drive */}
-          {loadedModel && (
-            <DriveSync
-              projectId={projectId}
-              fileName={`${(projectName || loadedModel.name).replace(/\.(ifc|xkt)$/i, '')}.bim`}
-              getZipBlob={getZipBlob}
-              pendingSync={pendingDriveSync}
-              onSynced={() => {
-                setPendingDriveSync(false)
-                broadcast({ type: 'sync-completed', projectId })
-                showNotification({
-                  title: '✓ Sincronizado com Drive',
-                  body:  'Backup atualizado.',
-                  tag:   'sync-done',
-                })
-              }}
-            />
-          )}
-
           <NotificationBell />
 
           <button onClick={() => { logout(); router.replace('/login') }} title={`Sair (${username})`}
@@ -352,7 +305,6 @@ export default function ProjectViewerPage() {
             onResetCamera={() => viewerControlsRef.current?.resetCamera()}
             onChangeModel={async () => {
               await deleteModelCache(projectId)
-              clearDriveMeta(projectId)
               loadedModelRef.current = null
               setLoadedModel(null); setSelectedElement(null); setCurrent(null)
             }}
@@ -394,7 +346,6 @@ export default function ProjectViewerPage() {
             element={selectedElement}
             record={current}
             saving={saving}
-            pendingSync={pendingDriveSync}
             onClose={handleClose}
             onZoomTo={(id) => viewerControlsRef.current?.zoomTo(id)}
             onSave={handleSave}
@@ -444,7 +395,6 @@ export default function ProjectViewerPage() {
               element={selectedElement}
               record={current}
               saving={saving}
-              pendingSync={pendingDriveSync}
               onClose={handleClose}
               onZoomTo={(id) => { viewerControlsRef.current?.zoomTo(id); handleClose() }}
               onSave={handleSave}
