@@ -53,6 +53,36 @@ export function deleteProject(id: string): void {
   purgeLocalProjectData(id)
 }
 
+// Duplica um projeto: novo id, mesmos registros de execução + daily logs + history + comments + annotations.
+// O cache de modelo (IndexedDB) é copiado em paralelo no caller via copyModelCache.
+// Retorna o novo Project ou null se a origem não existir.
+export function duplicateProject(sourceId: string, newName?: string): Project | null {
+  if (typeof window === 'undefined') return null
+  const source = getProject(sourceId)
+  if (!source) return null
+
+  const newId = crypto.randomUUID()
+  const duplicated: Project = {
+    id:          newId,
+    name:        (newName ?? `${source.name} (cópia)`).trim(),
+    description: source.description ?? '',
+    createdAt:   new Date().toISOString(),
+  }
+  saveProjects([duplicated, ...getProjects()])
+
+  // Clona todos os blobs de localStorage que pertenciam ao projeto fonte
+  const prefixes = [`bim_exec_${sourceId}_`, `bim_daily_${sourceId}_`, `bim_history_${sourceId}_`, `bim_comments_${sourceId}_`, `bim_annotations_${sourceId}_`]
+  for (const k of Object.keys(localStorage)) {
+    const matchedPrefix = prefixes.find(p => k.startsWith(p))
+    if (!matchedPrefix) continue
+    const suffix = k.slice(matchedPrefix.length)
+    const newKey = matchedPrefix.replace(sourceId, newId) + suffix
+    const value  = localStorage.getItem(k)
+    if (value !== null) localStorage.setItem(newKey, value)
+  }
+  return duplicated
+}
+
 // Limpa registros locais do projeto (progresso, histórico, comentários, anotações).
 export function purgeLocalProjectData(id: string): void {
   if (typeof window === 'undefined') return

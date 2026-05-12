@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Ruler, Layers, X } from 'lucide-react'
+import { Ruler, Layers, X, Keyboard } from 'lucide-react'
 import { useXeokit } from '@/hooks/useXeokit'
 import type { IFCElement, ExecutionRecord, LoadedModel } from '@/types'
 
@@ -12,9 +12,10 @@ interface BIMViewerProps {
   onSelect:         (element: IFCElement) => void
   onReady?:         (controls: ReturnType<typeof useXeokit>) => void
   onElementCount?:  (count: number) => void
+  onClosePanel?:    () => void
 }
 
-export default function BIMViewer({ model, records, filterStatus, onSelect, onReady, onElementCount }: BIMViewerProps) {
+export default function BIMViewer({ model, records, filterStatus, onSelect, onReady, onElementCount, onClosePanel }: BIMViewerProps) {
   const controls = useXeokit({ canvasId: 'xeokit-canvas', model, onElementSelect: onSelect })
   const [activeLevel, setActiveLevel] = useState<string | null>(null)
 
@@ -34,6 +35,31 @@ export default function BIMViewer({ model, records, filterStatus, onSelect, onRe
   useEffect(() => {
     setActiveLevel(null)
   }, [model])
+
+  // Atalhos de teclado — F: foco (zoom no aabb), H: reset câmera,
+  // M: alterna medição, Esc: fecha painel. Ignora quando o foco está em
+  // um input/textarea/select para não roubar tecla durante digitação.
+  useEffect(() => {
+    function isTyping(target: EventTarget | null): boolean {
+      const el = target as HTMLElement | null
+      if (!el) return false
+      const tag = el.tagName
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
+    }
+    function handler(e: KeyboardEvent) {
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      if (isTyping(e.target)) return
+      switch (e.key.toLowerCase()) {
+        case 'f': controls.resetCamera(); break
+        case 'h': controls.resetCamera(); break
+        case 'm': controls.toggleMeasure(); break
+        case 'escape': onClosePanel?.(); break
+        default: return
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [controls.resetCamera, controls.toggleMeasure, onClosePanel]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="relative w-full h-full bg-neutral-900">
@@ -116,6 +142,18 @@ export default function BIMViewer({ model, records, filterStatus, onSelect, onRe
               Limpar
             </button>
           )}
+        </div>
+      )}
+
+      {/* Dica de atalhos (apenas desktop) */}
+      {!controls.isLoading && !controls.error && (
+        <div className="hidden md:flex absolute top-2 right-40 z-10 items-center gap-1 bg-neutral-900/70 backdrop-blur-sm border border-neutral-700 rounded-lg px-2 py-1 text-[10px] text-neutral-400">
+          <Keyboard className="w-3 h-3" />
+          <span><kbd className="font-mono">F</kbd>/<kbd className="font-mono">H</kbd> foco</span>
+          <span>·</span>
+          <span><kbd className="font-mono">M</kbd> medir</span>
+          <span>·</span>
+          <span><kbd className="font-mono">Esc</kbd> fechar</span>
         </div>
       )}
 

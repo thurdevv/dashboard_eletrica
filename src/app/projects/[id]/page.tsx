@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { ArrowLeft, LogOut, BarChart3, MapPin, CalendarDays, QrCode } from 'lucide-react'
+import { ArrowLeft, LogOut, BarChart3, MapPin, CalendarDays, QrCode, Camera } from 'lucide-react'
 import ModelUploader from '@/components/viewer/ModelUploader'
 import ViewerControls from '@/components/viewer/ViewerControls'
 import ElementPanel from '@/components/panel/ElementPanel'
@@ -13,6 +13,7 @@ import FilterBar from '@/components/filters/FilterBar'
 import ProgressSummary from '@/components/ui/ProgressSummary'
 import ReportModal from '@/components/ui/ReportModal'
 import QRCodesModal from '@/components/ui/QRCodesModal'
+import SnapshotsModal from '@/components/ui/SnapshotsModal'
 import NotificationBell from '@/components/ui/NotificationBell'
 import { showNotification, broadcast, onBroadcast } from '@/lib/notifications'
 import { useExecution } from '@/hooks/useExecution'
@@ -32,13 +33,22 @@ export default function ProjectViewerPage() {
   const projectId    = params.id as string
   const deepLinkGlobalId = searchParams.get('element')
 
+  // Filtros são persistidos na query string para que links compartilhados restaurem
+  // a visão (ex: ?status=ISSUE&level=Pav1). Mantém status='ALL' como sentinela.
+  const initialFilters: FilterState = {
+    status:      (searchParams.get('status') as FilterState['status']) || 'ALL',
+    level:       searchParams.get('level')       ?? '',
+    elementType: searchParams.get('elementType') ?? '',
+  }
+
   const [loadedModel,       setLoadedModel]       = useState<LoadedModel | null>(null)
   const [selectedElement,   setSelectedElement]   = useState<IFCElement | null>(null)
-  const [filters,           setFilters]           = useState<FilterState>({ status: 'ALL', level: '', elementType: '' })
+  const [filters,           setFilters]           = useState<FilterState>(initialFilters)
   const [levels,            setLevels]            = useState<string[]>([])
   const [elementTypes,      setElementTypes]      = useState<string[]>([])
   const [showReport,        setShowReport]        = useState(false)
   const [showQR,            setShowQR]            = useState(false)
+  const [showSnapshots,     setShowSnapshots]     = useState(false)
   const [modelElementCount, setModelElementCount] = useState(0)
   const [sheetOpen,         setSheetOpen]         = useState(false)
   const [projectName,       setProjectName]       = useState('')
@@ -75,6 +85,21 @@ export default function ProjectViewerPage() {
   }, [projectId, router]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { loadAllRecords(filters) }, [filters]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sincroniza filtros → URL (preserva ?element=… do deep link)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams()
+    if (filters.status && filters.status !== 'ALL') params.set('status',      filters.status)
+    if (filters.level)                              params.set('level',       filters.level)
+    if (filters.elementType)                        params.set('elementType', filters.elementType)
+    if (deepLinkGlobalId)                           params.set('element',     deepLinkGlobalId)
+    const qs = params.toString()
+    const next = qs ? `?${qs}` : ''
+    if (window.location.search !== next) {
+      window.history.replaceState(null, '', `${window.location.pathname}${next}`)
+    }
+  }, [filters, deepLinkGlobalId])
 
   useEffect(() => {
     if (selectedElement) setSheetOpen(true)
@@ -259,6 +284,12 @@ export default function ProjectViewerPage() {
             className="flex items-center gap-1 bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold px-2 md:px-3 py-1.5 rounded-lg transition-colors">
             <QrCode className="w-4 h-4" /><span className="hidden md:inline">QR Codes</span>
           </button>
+          <button onClick={() => setShowSnapshots(true)}
+            title="Snapshots de progresso"
+            aria-label="Gerenciar snapshots de progresso"
+            className="flex items-center gap-1 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold px-2 md:px-3 py-1.5 rounded-lg transition-colors">
+            <Camera className="w-4 h-4" /><span className="hidden md:inline">Snapshots</span>
+          </button>
           <Link href={`/projects/${projectId}/dashboard`}
             aria-label="Abrir dashboard analítico"
             className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-2 md:px-3 py-1.5 rounded-lg transition-colors">
@@ -320,6 +351,7 @@ export default function ProjectViewerPage() {
               onSelect={handleElementSelect}
               onReady={(controls) => { viewerControlsRef.current = controls }}
               onElementCount={setModelElementCount}
+              onClosePanel={handleClose}
             />
           </div>
         </div>
@@ -422,6 +454,14 @@ export default function ProjectViewerPage() {
           levels={levels}
           elementTypes={elementTypes}
           onClose={() => setShowQR(false)}
+        />
+      )}
+
+      {showSnapshots && (
+        <SnapshotsModal
+          projectId={projectId}
+          onClose={() => setShowSnapshots(false)}
+          onRestored={() => { loadAllRecords(filters); setShowSnapshots(false) }}
         />
       )}
     </div>

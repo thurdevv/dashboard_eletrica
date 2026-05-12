@@ -1,7 +1,7 @@
 'use client'
 
-import { useRef } from 'react'
-import { X, Printer, FileText, FileSpreadsheet, FileDown } from 'lucide-react'
+import { useRef, useMemo, useState } from 'react'
+import { X, Printer, FileText, FileSpreadsheet, FileDown, Users } from 'lucide-react'
 import type { ExecutionRecord } from '@/types'
 import { STATUS_LABELS, STATUS_BADGE_CLASS } from '@/types'
 import { exportProjectToXlsx, exportProjectToCsv } from '@/lib/export/excel'
@@ -15,8 +15,23 @@ interface ReportModalProps {
   onClose:       () => void
 }
 
-export default function ReportModal({ records, projectName, projectId, totalElements, onClose }: ReportModalProps) {
+export default function ReportModal({ records: rawRecords, projectName, projectId, totalElements, onClose }: ReportModalProps) {
   const printRef = useRef<HTMLDivElement>(null)
+  const [userFilter, setUserFilter] = useState<string>('')
+
+  // Lista única de updated_by encontrados nos registros (ordenada)
+  const updaters = useMemo(() => {
+    const set = new Set<string>()
+    for (const r of rawRecords) {
+      if (r.updated_by) set.add(r.updated_by)
+    }
+    return [...set].sort()
+  }, [rawRecords])
+
+  const records = useMemo(
+    () => userFilter ? rawRecords.filter(r => r.updated_by === userFilter) : rawRecords,
+    [rawRecords, userFilter],
+  )
 
   const registered  = records.length
   const total       = totalElements > 0 ? totalElements : registered
@@ -113,6 +128,30 @@ export default function ReportModal({ records, projectName, projectId, totalElem
             </button>
           </div>
         </div>
+
+        {/* Filtros do relatório */}
+        {updaters.length > 0 && (
+          <div className="flex items-center gap-3 px-6 py-2 border-b border-gray-100 bg-gray-50 text-xs">
+            <span className="flex items-center gap-1 text-gray-500 font-semibold">
+              <Users className="w-3.5 h-3.5" /> Equipe / Usuário:
+            </span>
+            <select
+              value={userFilter}
+              onChange={(e) => setUserFilter(e.target.value)}
+              className="border border-gray-300 rounded px-2 py-1 text-sm bg-white"
+            >
+              <option value="">Todos</option>
+              {updaters.map((u) => (
+                <option key={u} value={u}>{u}</option>
+              ))}
+            </select>
+            {userFilter && (
+              <span className="text-gray-400 italic">
+                Mostrando {records.length} de {rawRecords.length} registros.
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Content — scrollable */}
         <div className="flex-1 overflow-y-auto p-6">

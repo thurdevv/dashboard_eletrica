@@ -1,15 +1,18 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Layers, FolderOpen, LogOut, ChevronRight, Plus, Trash2, X,
+  Layers, FolderOpen, LogOut, ChevronRight, Plus, Trash2, X, Copy, CloudOff, CheckCircle2, UploadCloud,
 } from 'lucide-react'
 import { getCurrentSession, logout } from '@/lib/auth'
-import { getProjects, createProject, deleteProject } from '@/lib/projects'
-import { deleteModelCache } from '@/lib/storage/modelCache'
+import { getProjects, createProject, deleteProject, duplicateProject } from '@/lib/projects'
+import { deleteModelCache, listCachedProjectIds, copyModelCache, saveModelCache } from '@/lib/storage/modelCache'
+import { unzipSync } from 'fflate'
+import { importProgressBundle } from '@/lib/api/execution'
 import CloudMigrationBanner from '@/components/ui/CloudMigrationBanner'
-import type { Project } from '@/types'
+import LocaleSwitcher from '@/components/LocaleSwitcher'
+import type { Project, LoadedModel } from '@/types'
 
 export default function ProjectsPage() {
   const router = useRouter()
@@ -18,12 +21,20 @@ export default function ProjectsPage() {
   const [showCreate,  setShowCreate]  = useState(false)
   const [newName,     setNewName]     = useState('')
   const [newDesc,     setNewDesc]     = useState('')
+  const [cachedIds,   setCachedIds]   = useState<Set<string>>(new Set())
+  const [batchStatus, setBatchStatus] = useState<string | null>(null)
+  const batchInputRef = useRef<HTMLInputElement>(null)
+
+  async function refreshCachedIds() {
+    setCachedIds(await listCachedProjectIds())
+  }
 
   useEffect(() => {
     const s = getCurrentSession()
     if (!s) { router.replace('/login'); return }
     setSession(s)
     setProjects(getProjects())
+    refreshCachedIds()
   }, [router])
 
   function handleLogout() {
@@ -46,6 +57,80 @@ export default function ProjectsPage() {
     deleteProject(id)
     await deleteModelCache(id)
     setProjects(getProjects())
+    refreshCachedIds()
+  }
+
+  async function handleDuplicate(p: Project) {
+    const newName = prompt('Nome do novo projeto:', `${p.name} (cópia)`)
+    if (newName === null) return
+    const copy = duplicateProject(p.id, newName || undefined)
+    if (!copy) return
+    await copyModelCache(p.id, copy.id)
+    setProjects(getProjects())
+    refreshCachedIds()
+  }
+
+  async function processBatchFile(file: File): Promise<{ name: string; ok: boolean; err?: string }> {
+    const lower = file.name.toLowerCase()
+    if (!/\.(ifc|xkt|bim|zip)$/.test(lower)) {
+      return { name: file.name, ok: false, err: 'Extensão não suportada' }
+    }
+    try {
+      const buf = await file.arrayBuffer()
+      let model: LoadedModel
+      let progressData: string | undefined
+      if (lower.endsWith('.bim') || lower.endsWith('.zip')) {
+        const entries = unzipSync(new Uint8Array(buf))
+        const ifcEntry      = Object.entries(entries).find(([n]) => n.toLowerCase().endsWith('.ifc'))
+        const xktEntry      = Object.entries(entries).find(([n]) => n.toLowerCase().endsWith('.xkt'))
+        const progressEntry = Object.entries(entries).find(([n]) => n.toLowerCase() === 'progresso.json')
+        const jsonEntry     = Object.entries(entries).find(([n]) => {
+          const l = n.toLowerCase()
+          return l.endsWith('.json') && l !== 'progresso.json'
+        })
+        const modelEntry = xktEntry ?? ifcEntry
+        if (!modelEntry) return { name: file.name, ok: false, err: 'ZIP sem modelo .ifc/.xkt' }
+        const modelType = modelEntry === xktEntry ? 'xkt' : 'ifc'
+        model = {
+          type: modelType,
+          url:  '',
+          name: modelEntry[0].split('/').pop()!,
+          data: modelEntry[1].buffer as ArrayBuffer,
+          metaData: jsonEntry ? (jsonEntry[1].buffer as ArrayBuffer) : undefined,
+        }
+        progressData = progressEntry ? new TextDecoder().decode(progressEntry[1]) : undefined
+      } else {
+        model = { type: lower.endsWith('.ifc') ? 'ifc' : 'xkt', url: '', name: file.name, data: buf }
+      }
+      const base    = file.name.replace(/\.(ifc|xkt|bim|zip)$/i, '')
+      const project = createProject({ name: base, description: `Importado em lote em ${new Date().toLocaleDateString('pt-BR')}` })
+      await saveModelCache(project.id, model)
+      if (progressData) importProgressBundle(project.id, progressData)
+      return { name: file.name, ok: true }
+    } catch (err: any) {
+      return { name: file.name, ok: false, err: err?.message ?? 'Erro desconhecido' }
+    }
+  }
+
+  async function handleBatchUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? [])
+    e.target.value = ''
+    if (files.length === 0) return
+    setBatchStatus(`Processando 0 / ${files.length}…`)
+    const results: { name: string; ok: boolean; err?: string }[] = []
+    for (let i = 0; i < files.length; i++) {
+      setBatchStatus(`Processando ${i + 1} / ${files.length} — ${files[i].name}`)
+      results.push(await processBatchFile(files[i]))
+    }
+    const okCount = results.filter(r => r.ok).length
+    const errors  = results.filter(r => !r.ok)
+    setBatchStatus(null)
+    setProjects(getProjects())
+    refreshCachedIds()
+    const summary = `${okCount} projeto(s) criado(s).` + (errors.length > 0
+      ? `\n\nFalhas:\n${errors.map(e => `• ${e.name}: ${e.err}`).join('\n')}`
+      : '')
+    alert(summary)
   }
 
   function formatDate(iso: string) {
@@ -66,10 +151,13 @@ export default function ProjectsPage() {
             <p className="text-neutral-400 text-xs mt-0.5">Olá, {session?.username}</p>
           </div>
         </div>
-        <button onClick={handleLogout}
-          className="flex items-center gap-1.5 text-neutral-400 hover:text-white text-xs transition-colors">
-          <LogOut className="w-4 h-4" /> Sair
-        </button>
+        <div className="flex items-center gap-3">
+          <LocaleSwitcher />
+          <button onClick={handleLogout}
+            className="flex items-center gap-1.5 text-neutral-400 hover:text-white text-xs transition-colors">
+            <LogOut className="w-4 h-4" /> Sair
+          </button>
+        </div>
       </header>
 
       <main className="max-w-2xl mx-auto p-5">
@@ -79,14 +167,37 @@ export default function ProjectsPage() {
         {/* Título + ações */}
         <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
           <h2 className="text-white font-bold text-xl">Projetos</h2>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-3 py-2 rounded-lg transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Novo projeto
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              ref={batchInputRef}
+              type="file"
+              multiple
+              accept=".ifc,.xkt,.bim,.zip"
+              className="hidden"
+              onChange={handleBatchUpload}
+            />
+            <button
+              onClick={() => batchInputRef.current?.click()}
+              title="Importar múltiplos arquivos como projetos"
+              className="flex items-center gap-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-sm font-semibold px-3 py-2 rounded-lg transition-colors border border-neutral-700"
+            >
+              <UploadCloud className="w-4 h-4" /> Upload em lote
+            </button>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-3 py-2 rounded-lg transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Novo projeto
+            </button>
+          </div>
         </div>
+
+        {batchStatus && (
+          <div className="mb-4 bg-blue-900/40 border border-blue-700 text-blue-200 text-xs rounded-lg px-3 py-2">
+            {batchStatus}
+          </div>
+        )}
 
         {/* Lista */}
         {projects.length === 0 ? (
@@ -110,13 +221,34 @@ export default function ProjectsPage() {
                     <Layers className="w-5 h-5 text-blue-400" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-white font-semibold text-sm truncate">{p.name}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-white font-semibold text-sm truncate">{p.name}</p>
+                      {cachedIds.has(p.id) ? (
+                        <span title="Modelo carregado no dispositivo"
+                          className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-green-400 bg-green-500/10 border border-green-500/20 px-1.5 py-0.5 rounded">
+                          <CheckCircle2 className="w-3 h-3" /> carregado
+                        </span>
+                      ) : (
+                        <span title="Nenhum modelo BIM carregado neste dispositivo"
+                          className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500 bg-neutral-700/40 border border-neutral-600 px-1.5 py-0.5 rounded">
+                          <CloudOff className="w-3 h-3" /> vazio
+                        </span>
+                      )}
+                    </div>
                     {p.description && (
                       <p className="text-neutral-500 text-xs truncate mt-0.5">{p.description}</p>
                     )}
                     <p className="text-neutral-600 text-xs mt-1">Criado em {formatDate(p.createdAt)}</p>
                   </div>
                   <ChevronRight className="w-5 h-5 text-neutral-500 group-hover:text-blue-400 flex-shrink-0" />
+                </button>
+                <button
+                  onClick={() => handleDuplicate(p)}
+                  title="Duplicar projeto"
+                  aria-label={`Duplicar projeto ${p.name}`}
+                  className="p-2 rounded-lg text-neutral-500 hover:text-blue-400 hover:bg-blue-900/20 transition-colors flex-shrink-0"
+                >
+                  <Copy className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => handleDelete(p.id)}
