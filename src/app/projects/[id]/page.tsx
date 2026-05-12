@@ -18,6 +18,7 @@ import NotificationBell from '@/components/ui/NotificationBell'
 import { showNotification, broadcast, onBroadcast } from '@/lib/notifications'
 import { useExecution } from '@/hooks/useExecution'
 import { getProjectLevels, getProjectElementTypes, exportProjectData, importProjectData, exportModelWithProgress, importProgressBundle } from '@/lib/api/execution'
+import { importPlanningCsv, buildPlanningCsvTemplate } from '@/lib/import/csv'
 import { getCurrentSession, logout } from '@/lib/auth'
 import { getProject } from '@/lib/projects'
 import { deleteModelCache, loadModelCache } from '@/lib/storage/modelCache'
@@ -57,9 +58,10 @@ export default function ProjectViewerPage() {
 
   const viewerControlsRef  = useRef<ReturnType<typeof useXeokit> | null>(null)
   const importInputRef     = useRef<HTMLInputElement>(null)
+  const csvInputRef        = useRef<HTMLInputElement>(null)
   const loadedModelRef     = useRef<LoadedModel | null>(null)
 
-  const { records, allRecords, current, saving, loadAllRecords, loadElementRecord, saveRecord, setCurrent } =
+  const { records, allRecords, current, saving, loadAllRecords, loadElementRecord, saveRecord, bulkUpdateStatus, setCurrent } =
     useExecution(projectId)
 
   useEffect(() => {
@@ -220,6 +222,32 @@ export default function ProjectViewerPage() {
     URL.revokeObjectURL(url)
   }, [projectId])
 
+  const handleImportCsv = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const res = importPlanningCsv(projectId, ev.target?.result as string)
+      loadAllRecords(filters)
+      Promise.all([getProjectLevels(projectId), getProjectElementTypes(projectId)])
+        .then(([lvls, types]) => { setLevels(lvls); setElementTypes(types) })
+      const errMsg = res.errors.length > 0 ? `\n\nFalhas:\n${res.errors.slice(0, 5).join('\n')}` : ''
+      alert(`CSV processado:\n✓ ${res.imported} registro(s) atualizado(s)\n• ${res.skipped} ignorado(s)${errMsg}`)
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }, [projectId, filters]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleDownloadCsvTemplate = useCallback(() => {
+    const blob = new Blob([buildPlanningCsvTemplate()], { type: 'text/csv;charset=utf-8' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = 'planejamento-template.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [])
+
   const handleImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -267,8 +295,16 @@ export default function ProjectViewerPage() {
 
           <input ref={importInputRef} type="file" accept=".json" className="hidden" onChange={handleImport} />
           <button onClick={() => importInputRef.current?.click()}
+            title="Importar JSON exportado pelo app"
             className="flex items-center gap-1 bg-neutral-700 hover:bg-neutral-600 text-white text-xs font-semibold px-2 md:px-3 py-1.5 rounded-lg transition-colors">
             <span>📂</span><span className="hidden md:inline">Importar</span>
+          </button>
+          <input ref={csvInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleImportCsv} />
+          <button onClick={() => csvInputRef.current?.click()}
+            title="Importar planejamento de CSV (data prevista, qtd planejada)"
+            onContextMenu={(e) => { e.preventDefault(); handleDownloadCsvTemplate() }}
+            className="flex items-center gap-1 bg-neutral-700 hover:bg-neutral-600 text-white text-xs font-semibold px-2 md:px-3 py-1.5 rounded-lg transition-colors">
+            <span>📊</span><span className="hidden md:inline">CSV</span>
           </button>
           <button onClick={handleExport}
             className="flex items-center gap-1 bg-neutral-700 hover:bg-neutral-600 text-white text-xs font-semibold px-2 md:px-3 py-1.5 rounded-lg transition-colors">
@@ -368,6 +404,8 @@ export default function ProjectViewerPage() {
               onFiltersChange={setFilters}
               onZoomTo={(id) => viewerControlsRef.current?.zoomTo(id)}
               onClose={() => setElementListOpen(false)}
+              onBulkStatus={bulkUpdateStatus}
+              saving={saving}
             />
           </aside>
         )}

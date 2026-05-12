@@ -12,6 +12,7 @@ import { unzipSync } from 'fflate'
 import { importProgressBundle } from '@/lib/api/execution'
 import CloudMigrationBanner from '@/components/ui/CloudMigrationBanner'
 import LocaleSwitcher from '@/components/LocaleSwitcher'
+import ConnectionIndicator from '@/components/ConnectionIndicator'
 import type { Project, LoadedModel } from '@/types'
 
 export default function ProjectsPage() {
@@ -152,6 +153,7 @@ export default function ProjectsPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <ConnectionIndicator />
           <LocaleSwitcher />
           <button onClick={handleLogout}
             className="flex items-center gap-1.5 text-neutral-400 hover:text-white text-xs transition-colors">

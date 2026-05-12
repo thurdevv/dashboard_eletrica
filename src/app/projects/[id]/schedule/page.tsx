@@ -2,17 +2,19 @@
 
 import { useEffect, useState, use } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Plus, Trash2, CalendarDays } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, CalendarDays, BarChart3, List } from 'lucide-react'
 import { getScheduledTasks, addScheduledTask, deleteScheduledTask, updateScheduledTask } from '@/lib/storage/extras'
 import { getProject } from '@/lib/projects'
 import { STATUS_LABELS, STATUS_BADGE_CLASS } from '@/types'
 import type { ScheduledTask, ExecutionStatus } from '@/types'
+import GanttChart from '@/components/schedule/GanttChart'
 
 export default function SchedulePage({ params }: { params: Promise<{ id: string }> }) {
   const { id: projectId } = use(params)
   const [tasks,       setTasks]       = useState<ScheduledTask[]>([])
   const [projectName, setProjectName] = useState('')
   const [showForm,    setShowForm]    = useState(false)
+  const [view,        setView]        = useState<'list' | 'gantt'>('list')
 
   const [title,        setTitle]        = useState('')
   const [description,  setDescription]  = useState('')
@@ -66,6 +68,20 @@ export default function SchedulePage({ params }: { params: Promise<{ id: string 
         <h1 className="font-bold text-gray-900 text-lg flex-1">
           Cronograma — <span className="text-blue-600">{projectName}</span>
         </h1>
+        <div className="inline-flex items-center bg-gray-100 rounded-lg p-0.5">
+          <button onClick={() => setView('list')}
+            aria-pressed={view === 'list'}
+            className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded transition-colors
+              ${view === 'list' ? 'bg-white text-gray-900 shadow' : 'text-gray-500 hover:text-gray-900'}`}>
+            <List className="w-3.5 h-3.5" /> Lista
+          </button>
+          <button onClick={() => setView('gantt')}
+            aria-pressed={view === 'gantt'}
+            className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded transition-colors
+              ${view === 'gantt' ? 'bg-white text-gray-900 shadow' : 'text-gray-500 hover:text-gray-900'}`}>
+            <BarChart3 className="w-3.5 h-3.5" /> Gantt
+          </button>
+        </div>
         <button onClick={() => setShowForm(true)}
           className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-3 py-1.5 rounded-lg">
           <Plus className="w-4 h-4" /> Nova tarefa
@@ -126,6 +142,8 @@ export default function SchedulePage({ params }: { params: Promise<{ id: string 
             <CalendarDays className="w-10 h-10 mx-auto text-gray-300 mb-2" />
             <p className="text-sm text-gray-400">Nenhuma tarefa programada ainda.</p>
           </div>
+        ) : view === 'gantt' ? (
+          <GanttChart tasks={tasks} />
         ) : (
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <table className="w-full text-sm">
