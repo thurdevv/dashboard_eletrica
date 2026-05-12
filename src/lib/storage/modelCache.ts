@@ -95,3 +95,43 @@ export async function hasModelCache(projectId: string): Promise<boolean> {
     return false
   }
 }
+
+// Lê os ids de projeto com modelo em cache. Usado para mostrar o badge "🟢 carregado"
+// na lista de projetos sem precisar carregar o ArrayBuffer inteiro.
+export async function listCachedProjectIds(): Promise<Set<string>> {
+  try {
+    const db = await openDB()
+    const ids = await new Promise<string[]>((res, rej) => {
+      const tx  = db.transaction(STORE, 'readonly')
+      const req = tx.objectStore(STORE).getAllKeys()
+      req.onsuccess = () => res(req.result as string[])
+      req.onerror   = () => rej(req.error)
+    })
+    return new Set(ids)
+  } catch {
+    return new Set()
+  }
+}
+
+// Clona o modelo cacheado de um projeto para outro id. Retorna false se não havia cache.
+export async function copyModelCache(fromProjectId: string, toProjectId: string): Promise<boolean> {
+  try {
+    const db = await openDB()
+    const row = await new Promise<CachedModel | undefined>((res, rej) => {
+      const tx  = db.transaction(STORE, 'readonly')
+      const req = tx.objectStore(STORE).get(fromProjectId)
+      req.onsuccess = () => res(req.result)
+      req.onerror   = () => rej(req.error)
+    })
+    if (!row) return false
+    await new Promise<void>((res, rej) => {
+      const tx  = db.transaction(STORE, 'readwrite')
+      const req = tx.objectStore(STORE).put({ ...row, projectId: toProjectId, savedAt: new Date().toISOString() })
+      req.onsuccess = () => res()
+      req.onerror   = () => rej(req.error)
+    })
+    return true
+  } catch {
+    return false
+  }
+}

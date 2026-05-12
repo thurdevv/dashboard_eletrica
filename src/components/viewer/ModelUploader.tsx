@@ -89,17 +89,37 @@ export default function ModelUploader({ projectId, onModelLoad }: ModelUploaderP
     }
   }, [projectId, onModelLoad])
 
+  // Em iOS Safari, o atributo accept não filtra por extensão consistentemente —
+  // ele pode permitir qualquer arquivo (especialmente vindo dos Files app).
+  // Validar em JS aqui evita erro confuso lá embaixo no processFile.
+  function isAcceptedFile(file: File): boolean {
+    const lower = file.name.toLowerCase()
+    return ACCEPTED_EXT.some(ext => lower.endsWith(ext))
+  }
+
   const handleSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     e.target.value = ''
-    if (file) void processFile(file)
+    if (!file) return
+    if (!isAcceptedFile(file)) {
+      setStep('error')
+      setError(`Arquivo "${file.name}" não tem extensão suportada (.ifc, .xkt, .bim, .zip).`)
+      return
+    }
+    void processFile(file)
   }
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     setDragging(false)
     const file = e.dataTransfer.files?.[0]
-    if (file) void processFile(file)
+    if (!file) return
+    if (!isAcceptedFile(file)) {
+      setStep('error')
+      setError(`Arquivo "${file.name}" não tem extensão suportada (.ifc, .xkt, .bim, .zip).`)
+      return
+    }
+    void processFile(file)
   }
 
   if (step === 'reading') {

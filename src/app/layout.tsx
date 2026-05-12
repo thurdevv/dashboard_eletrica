@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import SentryInit from '@/components/SentryInit'
+import SWUpdatePrompt from '@/components/SWUpdatePrompt'
 
 export const metadata: Metadata = {
   title: 'BIM Elétrico',
@@ -29,6 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="antialiased">
         <SentryInit />
+        <SWUpdatePrompt />
         {children}
         <script dangerouslySetInnerHTML={{
           __html: `

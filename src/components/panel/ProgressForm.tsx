@@ -61,6 +61,36 @@ export default function ProgressForm({ initial, onSave, saving, projectId, globa
   const cameraRef  = useRef<HTMLInputElement>(null)
   const galleryRef = useRef<HTMLInputElement>(null)
 
+  // Auto-save: depois que o usuário para de digitar 1.5s, dispara onSave.
+  // Pula a 1ª passagem (evita salvar ao só abrir o painel) e quando há foto
+  // pendente (foto exige confirmação explícita pelo botão).
+  const firstRunRef     = useRef(true)
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [autoSaved, setAutoSaved] = useState<number>(0)
+
+  useEffect(() => {
+    if (firstRunRef.current) { firstRunRef.current = false; return }
+    if (photo) return                          // foto pendente: só salva no submit
+    if (saving) return
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    autoSaveTimerRef.current = setTimeout(async () => {
+      try {
+        await onSave({
+          status, executed_quantity: qty, team_size: team, worked_hours: hours, notes, photo: null,
+          checklist:        Object.keys(checklist).length > 0 ? checklist : undefined,
+          planned_start:    plannedStart || undefined,
+          planned_end:      plannedEnd || undefined,
+          planned_quantity: plannedQuantity > 0 ? plannedQuantity : undefined,
+        })
+        setAutoSaved(Date.now())
+      } catch { /* falha silenciosa; usuário ainda pode salvar manualmente */ }
+    }, 1500)
+    return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current) }
+  }, [status, qty, team, hours, notes, checklist, plannedStart, plannedEnd, plannedQuantity]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset firstRun quando troca de elemento (evita auto-save ao abrir o próximo)
+  useEffect(() => { firstRunRef.current = true }, [initial?.ifc_global_id])
+
   // Load daily log when element changes
   useEffect(() => {
     if (projectId && globalId) {
@@ -382,6 +412,11 @@ export default function ProgressForm({ initial, onSave, saving, projectId, globa
       {saved && (
         <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 font-medium">
           ✓ Progresso salvo com sucesso!
+        </div>
+      )}
+      {!saved && autoSaved > 0 && (
+        <div className="text-[11px] text-gray-400 italic -mt-2">
+          Auto-salvo às {new Date(autoSaved).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
         </div>
       )}
 

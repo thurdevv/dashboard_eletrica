@@ -20,11 +20,12 @@ const PRECACHE = [
 ]
 
 // ─── Install ─────────────────────────────────────────────────
+// Não chama skipWaiting automaticamente — espera o usuário clicar em
+// "Atualizar" no prompt (SWUpdatePrompt.tsx) para evitar trocar o SW
+// em meio a uma operação (upload, geração de relatório).
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(STATIC_CACHE)
-      .then((c) => c.addAll(PRECACHE))
-      .then(() => self.skipWaiting())
+    caches.open(STATIC_CACHE).then((c) => c.addAll(PRECACHE))
   )
 })
 
@@ -92,6 +93,10 @@ self.addEventListener('fetch', (e) => {
 // contrário do new Notification() que requer aba ativa em alguns browsers).
 self.addEventListener('message', (e) => {
   const msg = e.data
+  if (msg?.type === 'SKIP_WAITING') {
+    self.skipWaiting()
+    return
+  }
   if (msg?.type === 'show-notification') {
     self.registration.showNotification(msg.title ?? 'BIM Elétrico', {
       body:  msg.body  ?? '',
