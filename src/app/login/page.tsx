@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Layers, Eye, EyeOff } from 'lucide-react'
 import { signIn, signUp, getCurrentSession, authMode } from '@/lib/auth'
+import ErrorMessage from '@/components/ui/ErrorMessage'
+import { AppError, toAppError } from '@/lib/errors'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -12,7 +14,7 @@ export default function LoginPage() {
   const [password,    setPassword]    = useState('')
   const [confirm,     setConfirm]     = useState('')
   const [showPass,    setShowPass]    = useState(false)
-  const [error,       setError]       = useState<string | null>(null)
+  const [error,       setError]       = useState<AppError | null>(null)
   const [loading,     setLoading]     = useState(false)
 
   useEffect(() => {
@@ -27,30 +29,30 @@ export default function LoginPage() {
     setLoading(true)
 
     if (!username.trim() || !password) {
-      setError('Preencha todos os campos.')
+      setError(new AppError('AUTH_MISSING_FIELDS'))
       setLoading(false)
       return
     }
 
     try {
       if (isRegister) {
-        if (password !== confirm) { setError('Senhas não conferem.'); setLoading(false); return }
-        if (password.length < 6)  { setError('Senha mínima: 6 caracteres.'); setLoading(false); return }
+        if (password !== confirm) { setError(new AppError('AUTH_PASSWORD_MISMATCH')); setLoading(false); return }
+        if (password.length < 6)  { setError(new AppError('AUTH_PASSWORD_TOO_SHORT')); setLoading(false); return }
         const user = await signUp(username, password)
         if (!user) {
-          setError(authMode() === 'supabase'
-            ? 'Falha ao criar conta. Email já cadastrado ou inválido.'
-            : 'Nome de usuário já existe.')
+          setError(new AppError(authMode() === 'supabase'
+            ? 'AUTH_EMAIL_TAKEN_OR_INVALID'
+            : 'AUTH_USERNAME_TAKEN'))
           setLoading(false); return
         }
         router.replace('/projects')
       } else {
         const user = await signIn(username, password)
-        if (!user) { setError('Usuário ou senha incorretos.'); setLoading(false); return }
+        if (!user) { setError(new AppError('AUTH_INVALID_CREDENTIALS')); setLoading(false); return }
         router.replace('/projects')
       }
-    } catch (err: any) {
-      setError(err?.message ?? 'Erro inesperado. Tente novamente.')
+    } catch (err: unknown) {
+      setError(toAppError(err, 'AUTH_UNEXPECTED'))
     } finally {
       setLoading(false)
     }
@@ -120,11 +122,7 @@ export default function LoginPage() {
               </div>
             )}
 
-            {error && (
-              <p className="text-red-400 text-xs bg-red-950/40 border border-red-800 rounded-lg px-3 py-2">
-                {error}
-              </p>
-            )}
+            {error && <ErrorMessage error={error} variant="inline" />}
 
             <button
               type="submit"

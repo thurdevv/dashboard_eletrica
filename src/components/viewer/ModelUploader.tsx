@@ -1,10 +1,12 @@
 'use client'
 
 import { useCallback, useRef, useState } from 'react'
-import { Upload, FileBox, Loader2, AlertCircle } from 'lucide-react'
+import { Upload, FileBox, Loader2 } from 'lucide-react'
 import { unzipSync } from 'fflate'
 import { saveModelCache } from '@/lib/storage/modelCache'
 import { importProgressBundle } from '@/lib/api/execution'
+import ErrorMessage from '@/components/ui/ErrorMessage'
+import { AppError, toAppError } from '@/lib/errors'
 import type { LoadedModel } from '@/types'
 
 interface ModelUploaderProps {
@@ -20,7 +22,8 @@ function readAsArrayBuffer(file: File): Promise<ArrayBuffer> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload  = () => resolve(reader.result as ArrayBuffer)
-    reader.onerror = () => reject(reader.error ?? new Error('Falha ao ler arquivo'))
+    reader.onerror = () => reject(new AppError('UPLOAD_READ_FAILED',
+      reader.error?.message ?? 'FileReader error'))
     reader.readAsArrayBuffer(file)
   })
 }
@@ -28,7 +31,7 @@ function readAsArrayBuffer(file: File): Promise<ArrayBuffer> {
 export default function ModelUploader({ projectId, onModelLoad }: ModelUploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [step,     setStep]     = useState<Step>('idle')
-  const [error,    setError]    = useState<string | null>(null)
+  const [error,    setError]    = useState<AppError | null>(null)
   const [progress, setProgress] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
 
@@ -39,7 +42,7 @@ export default function ModelUploader({ projectId, onModelLoad }: ModelUploaderP
     try {
       const lower = file.name.toLowerCase()
       if (!ACCEPTED_EXT.some(ext => lower.endsWith(ext))) {
-        throw new Error('Formato não suportado. Use .ifc, .xkt, .bim ou .zip')
+        throw new AppError('UPLOAD_UNSUPPORTED_FORMAT', file.name)
       }
 
       const buf = await readAsArrayBuffer(file)
@@ -58,7 +61,7 @@ export default function ModelUploader({ projectId, onModelLoad }: ModelUploaderP
           return l.endsWith('.json') && l !== 'progresso.json'
         })
         const modelEntry = xktEntry ?? ifcEntry
-        if (!modelEntry) throw new Error('Nenhum modelo .ifc/.xkt encontrado no arquivo')
+        if (!modelEntry) throw new AppError('UPLOAD_NO_MODEL_IN_ZIP', file.name)
 
         const modelType = modelEntry === xktEntry ? ('xkt' as const) : ('ifc' as const)
         const modelName = modelEntry[0].split('/').pop()!
@@ -82,8 +85,8 @@ export default function ModelUploader({ projectId, onModelLoad }: ModelUploaderP
       setStep('idle')
       setProgress(null)
       onModelLoad(model)
-    } catch (err: any) {
-      setError(err?.message ?? 'Erro ao processar arquivo')
+    } catch (err: unknown) {
+      setError(toAppError(err, 'UPLOAD_PROCESS_FAILED'))
       setStep('error')
       setProgress(null)
     }
@@ -103,7 +106,7 @@ export default function ModelUploader({ projectId, onModelLoad }: ModelUploaderP
     if (!file) return
     if (!isAcceptedFile(file)) {
       setStep('error')
-      setError(`Arquivo "${file.name}" não tem extensão suportada (.ifc, .xkt, .bim, .zip).`)
+      setError(new AppError('UPLOAD_UNSUPPORTED_FORMAT', file.name))
       return
     }
     void processFile(file)
@@ -116,7 +119,7 @@ export default function ModelUploader({ projectId, onModelLoad }: ModelUploaderP
     if (!file) return
     if (!isAcceptedFile(file)) {
       setStep('error')
-      setError(`Arquivo "${file.name}" não tem extensão suportada (.ifc, .xkt, .bim, .zip).`)
+      setError(new AppError('UPLOAD_UNSUPPORTED_FORMAT', file.name))
       return
     }
     void processFile(file)
@@ -165,13 +168,9 @@ export default function ModelUploader({ projectId, onModelLoad }: ModelUploaderP
           onChange={handleSelect}
         />
 
-        {step === 'error' && (
-          <div className="mt-4 bg-red-950/40 border border-red-900/60 rounded-xl p-4 flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-red-300 text-sm font-semibold">Erro ao carregar</p>
-              <p className="text-neutral-400 text-xs mt-1">{error}</p>
-            </div>
+        {step === 'error' && error && (
+          <div className="mt-4">
+            <ErrorMessage error={error} />
           </div>
         )}
       </div>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Ruler, Layers, X, Keyboard } from 'lucide-react'
 import { useXeokit } from '@/hooks/useXeokit'
+import ErrorMessage from '@/components/ui/ErrorMessage'
 import type { IFCElement, ExecutionRecord, LoadedModel } from '@/types'
 
 interface BIMViewerProps {
@@ -81,12 +82,11 @@ export default function BIMViewer({ model, records, filterStatus, onSelect, onRe
 
       {/* Error */}
       {controls.error && (
-        <div className="absolute inset-0 flex items-center justify-center z-10">
-          <div className="bg-red-900/80 text-red-200 p-4 rounded-lg max-w-sm text-center">
-            <p className="font-semibold">Falha ao carregar modelo</p>
-            <p className="text-xs mt-1">{controls.error}</p>
-          </div>
-        </div>
+        <ErrorMessage
+          variant="overlay"
+          error={controls.error}
+          action={{ label: 'Recarregar página', onClick: () => window.location.reload() }}
+        />
       )}
 
       {/* ── Painel de Pavimentos ─────────────────────────────── */}

@@ -21,6 +21,7 @@ import { getProjectLevels, getProjectElementTypes, exportProjectData, importProj
 import { getCurrentSession, logout } from '@/lib/auth'
 import { getProject } from '@/lib/projects'
 import { deleteModelCache, loadModelCache } from '@/lib/storage/modelCache'
+import { getErrorContent } from '@/lib/errors'
 import type { IFCElement, ExecutionFormData, FilterState, LoadedModel } from '@/types'
 import type { useXeokit } from '@/hooks/useXeokit'
 
@@ -232,7 +233,8 @@ export default function ProjectViewerPage() {
           .then(([lvls, types]) => { setLevels(lvls); setElementTypes(types) })
         alert(`✓ ${count} registros importados com sucesso!`)
       } catch {
-        alert('Erro ao importar arquivo. Verifique se é um arquivo JSON válido.')
+        const c = getErrorContent('IMPORT_INVALID_JSON')
+        alert(`${c.title}\n${c.description}`)
       }
     }
     reader.readAsText(file)

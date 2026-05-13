@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import { Search, Layers, Eye, Home, FolderOpen, Download, Loader2, Archive, ListFilter } from 'lucide-react'
+import ErrorMessage from '@/components/ui/ErrorMessage'
+import { AppError, toAppError } from '@/lib/errors'
 import type { LoadedModel } from '@/types'
 
 interface ViewerControlsProps {
@@ -32,7 +34,7 @@ export default function ViewerControls({
   const [searchValue,    setSearchValue]    = useState('')
   const [selectedLevel,  setSelectedLevel]  = useState<string>('')
   const [converting,     setConverting]     = useState(false)
-  const [convertError,   setConvertError]   = useState<string | null>(null)
+  const [convertError,   setConvertError]   = useState<AppError | null>(null)
   const [exporting,      setExporting]      = useState(false)
 
   async function handleConvert() {
@@ -53,8 +55,8 @@ export default function ViewerControls({
 
       const res = await fetch('/api/convert', { method: 'POST', body: form })
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Falha na conversão' }))
-        throw new Error(err.error)
+        const errBody = await res.json().catch(() => ({}))
+        throw new AppError('CONVERT_FAILED', errBody?.error ?? `HTTP ${res.status}`)
       }
 
       const xktBlob  = await res.blob()
@@ -64,8 +66,8 @@ export default function ViewerControls({
       a.download     = modelName.replace(/\.ifc$/i, '.xkt')
       a.click()
       URL.revokeObjectURL(url)
-    } catch (err: any) {
-      setConvertError(err?.message ?? 'Erro ao converter')
+    } catch (err: unknown) {
+      setConvertError(toAppError(err, 'CONVERT_FAILED'))
     } finally {
       setConverting(false)
     }
@@ -206,8 +208,8 @@ export default function ViewerControls({
 
       {/* Conversion error */}
       {convertError && (
-        <div className="px-3 pb-2 text-xs text-red-400">
-          ⚠ {convertError}
+        <div className="px-3 pb-2">
+          <ErrorMessage error={convertError} variant="inline" />
         </div>
       )}
     </div>

@@ -4,6 +4,8 @@ import { useEffect, useRef, useCallback, useState } from 'react'
 import type { IFCElement, ExecutionRecord, LoadedModel } from '@/types'
 import { buildGlobalIdMap, buildReverseMap, buildLevelMap, extractIFCElement } from '@/lib/viewer/elementMapper'
 import { colorizeByStatus, highlightObject, showAll } from '@/lib/viewer/colorizer'
+import { AppError, toAppError } from '@/lib/errors'
+import { detectWebGL2Support } from '@/lib/webgl'
 
 interface UseXeokitOptions {
   canvasId:        string
@@ -19,7 +21,7 @@ export function useXeokit({ canvasId, model, onElementSelect }: UseXeokitOptions
   const selectedObjRef  = useRef<string | undefined>(undefined)
   const measurePluginRef = useRef<any>(null)
   const [isLoading,     setIsLoading]     = useState(false)
-  const [error,         setError]         = useState<string | null>(null)
+  const [error,         setError]         = useState<AppError | null>(null)
   const [elementCount,  setElementCount]  = useState(0)
   const [modelLevels,   setModelLevels]   = useState<string[]>([])
   const [measureActive, setMeasureActive] = useState(false)
@@ -37,6 +39,14 @@ export function useXeokit({ canvasId, model, onElementSelect }: UseXeokitOptions
       const m = model
       if (!m) return
       try {
+        // Aborta cedo se WebGL2 não está disponível: o xeokit usa shaders
+        // GLSL ES 3.0 que falham silenciosamente em WebGL1 com a mensagem
+        // críptica "unsupported shader version".
+        const webgl = detectWebGL2Support()
+        if (!webgl.ok) {
+          throw new AppError('WEBGL2_UNSUPPORTED', `reason: ${webgl.reason}`)
+        }
+
         const [xeokitSdk, webIfcNs] = await Promise.all([
           import('@xeokit/xeokit-sdk'),
           import('web-ifc'),
@@ -57,8 +67,20 @@ export function useXeokit({ canvasId, model, onElementSelect }: UseXeokitOptions
         // Destroy previous viewer instance if any
         viewerRef.current?.destroy()
 
-        viewer = new Viewer({ canvasId, transparent: true })
+        try {
+          viewer = new Viewer({ canvasId, transparent: true })
+        } catch (initErr) {
+          throw new AppError('VIEWER_INIT_FAILED',
+            initErr instanceof Error ? initErr.message : String(initErr))
+        }
         viewerRef.current = viewer
+
+        // Algumas GPUs declaram WebGL2 mas falham ao compilar o SAO em
+        // contextos limitados. Desligamos o SAO logo após criar o Viewer
+        // para evitar o erro de shader "unsupported shader version" sem
+        // perder o restante da renderização. Modelos continuam visíveis,
+        // apenas sem oclusão ambiente.
+        try { viewer.scene.sao.enabled = false } catch { /* opção pode não existir */ }
 
         new NavCubePlugin(viewer, {
           canvasId:   `${canvasId}-navcube`,
@@ -152,7 +174,13 @@ export function useXeokit({ canvasId, model, onElementSelect }: UseXeokitOptions
             : msg?.message ?? JSON.stringify(msg) ?? 'Erro desconhecido'
           // "getXKT error : null" is a benign warning (no conversion server) — not fatal
           if (text.includes('getXKT')) return
-          setError(text)
+          // Erros de shader chegam aqui em alguns casos — detectamos pelo
+          // texto e mapeamos para o código apropriado.
+          const isShader = /shader|GLSL|version 300 es/i.test(text)
+          setError(new AppError(
+            isShader ? 'WEBGL2_UNSUPPORTED' : 'MODEL_LOAD_FAILED',
+            text,
+          ))
           setIsLoading(false)
         })
 
@@ -233,10 +261,16 @@ export function useXeokit({ canvasId, model, onElementSelect }: UseXeokitOptions
           pickAndSelect([x, y])
         }, { passive: true })
 
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!destroyed) {
-          const text = err?.message ?? String(err) ?? 'Erro ao inicializar viewer'
-          setError(text)
+          const appErr = err instanceof AppError
+            ? err
+            // Erros de compilação de shader também caem aqui se vierem
+            // do construtor do Viewer.
+            : /shader|version 300 es|GLSL/i.test(String((err as Error)?.message ?? ''))
+              ? new AppError('WEBGL2_UNSUPPORTED', (err as Error).message)
+              : toAppError(err, 'VIEWER_INIT_FAILED')
+          setError(appErr)
           setIsLoading(false)
         }
       }
