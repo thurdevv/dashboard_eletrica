@@ -17,6 +17,8 @@ export type ErrorCode =
   | 'CONVERT_FAILED'
   // Importação de progresso
   | 'IMPORT_INVALID_JSON'
+  // Registro de progresso
+  | 'PHOTO_REQUIRED_TO_COMPLETE'
   // Autenticação
   | 'AUTH_MISSING_FIELDS'
   | 'AUTH_PASSWORD_MISMATCH'
@@ -78,6 +80,12 @@ const PT_BR: Record<ErrorCode, ErrorContent> = {
   IMPORT_INVALID_JSON: {
     title:       'Arquivo inválido',
     description: 'O arquivo selecionado não é um JSON de progresso válido.',
+  },
+
+  PHOTO_REQUIRED_TO_COMPLETE: {
+    title:       'Foto é obrigatória para concluir',
+    description: 'Anexe uma foto do elemento antes de marcar como Concluído.',
+    hint:        'Use o botão Câmera ou Galeria abaixo. A foto fica vinculada ao registro e ajuda auditorias futuras.',
   },
 
   AUTH_MISSING_FIELDS: {
@@ -158,6 +166,12 @@ const EN: Record<ErrorCode, ErrorContent> = {
   IMPORT_INVALID_JSON: {
     title:       'Invalid file',
     description: 'The selected file is not a valid progress JSON.',
+  },
+
+  PHOTO_REQUIRED_TO_COMPLETE: {
+    title:       'Photo required to complete',
+    description: 'Attach a photo of the element before marking it as Completed.',
+    hint:        'Use the Camera or Gallery button below. The photo stays linked to the record for audit purposes.',
   },
 
   AUTH_MISSING_FIELDS: {

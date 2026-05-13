@@ -14,6 +14,9 @@ import ProgressSummary from '@/components/ui/ProgressSummary'
 import ReportModal from '@/components/ui/ReportModal'
 import SnapshotsModal from '@/components/ui/SnapshotsModal'
 import NotificationBell from '@/components/ui/NotificationBell'
+import ConnectionBanner from '@/components/ui/ConnectionBanner'
+import HighContrastToggle from '@/components/ui/HighContrastToggle'
+import { useWakeLock } from '@/hooks/useWakeLock'
 import { showNotification, broadcast, onBroadcast } from '@/lib/notifications'
 import { useExecution } from '@/hooks/useExecution'
 import { getProjectLevels, getProjectElementTypes, exportProjectData, importProjectData, exportModelWithProgress, importProgressBundle } from '@/lib/api/execution'
@@ -61,6 +64,11 @@ export default function ProjectViewerPage() {
   const viewerControlsRef  = useRef<ReturnType<typeof useXeokit> | null>(null)
   const importInputRef     = useRef<HTMLInputElement>(null)
   const loadedModelRef     = useRef<LoadedModel | null>(null)
+
+  // Wake Lock: mantém a tela ligada enquanto o operador está com o painel
+  // do elemento aberto (desktop) ou o bottom sheet (mobile). Crítico em
+  // campo onde o celular fica sobre a bancada enquanto se mede.
+  useWakeLock(panelOpen || sheetOpen)
 
   const { records, allRecords, current, saving, loadAllRecords, loadElementRecord, saveRecord, setCurrent } =
     useExecution(projectId)
@@ -180,7 +188,9 @@ export default function ProjectViewerPage() {
 
   const handleSave = useCallback(async (form: ExecutionFormData) => {
     if (!selectedElement) return
-    await saveRecord(selectedElement, form)
+    // Passa o username logado para o campo updated_by — depois aparece no
+    // ElementPanel ("Última atualização: João") e nos relatórios.
+    await saveRecord(selectedElement, form, username || undefined)
     await loadAllRecords(filters)
     Promise.all([getProjectLevels(projectId), getProjectElementTypes(projectId)])
       .then(([lvls, types]) => { setLevels(lvls); setElementTypes(types) })
@@ -205,7 +215,7 @@ export default function ProjectViewerPage() {
       }
       broadcast({ type: 'issue-reported', projectId, record: record as any })
     }
-  }, [selectedElement, saveRecord, loadAllRecords, filters, projectId, current])
+  }, [selectedElement, saveRecord, loadAllRecords, filters, projectId, current, username])
 
   const handleClose = useCallback(() => {
     setSheetOpen(false)
@@ -250,6 +260,9 @@ export default function ProjectViewerPage() {
 
   return (
     <div className="flex flex-col h-screen bg-gray-50 overflow-hidden font-sans">
+
+      {/* Banner global de conexão (offline/voltou online) */}
+      <ConnectionBanner />
 
       {/* Cabeçalho */}
       <header className="flex items-center justify-between px-3 md:px-5 py-2 md:py-3 bg-neutral-900 shadow z-10 flex-shrink-0">
@@ -300,6 +313,7 @@ export default function ProjectViewerPage() {
             <MapPin className="w-4 h-4" /><span className="hidden md:inline">Anotações</span>
           </Link>
 
+          <HighContrastToggle />
           <NotificationBell />
 
           <button onClick={() => { logout(); router.replace('/login') }} title={`Sair (${username})`}

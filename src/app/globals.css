@@ -43,3 +43,49 @@ a:focus-visible {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ─── Modo alto contraste / anti-sol ──────────────────────────────── */
+/* Ativado pela classe `.high-contrast` no <html> via useHighContrast.
+   Pensado para uso em obra sob luz direta: aumenta saturação e
+   contraste do canvas 3D, engrossa textos pequenos e reforça bordas
+   de inputs/botões. */
+html.high-contrast {
+  /* Sombra de texto suave melhora legibilidade em telas baratas */
+  text-rendering: geometricPrecision;
+}
+
+html.high-contrast canvas {
+  filter: contrast(1.18) saturate(1.35) brightness(1.04);
+}
+
+html.high-contrast body {
+  color: #000;
+}
+
+html.high-contrast .text-neutral-400,
+html.high-contrast .text-neutral-500,
+html.high-contrast .text-gray-400,
+html.high-contrast .text-gray-500 {
+  color: #1f2937 !important;          /* gray-800 */
+}
+
+html.high-contrast .text-gray-600,
+html.high-contrast .text-neutral-300 {
+  color: #111827 !important;          /* gray-900 */
+}
+
+html.high-contrast input,
+html.high-contrast textarea,
+html.high-contrast select {
+  border-width: 2px !important;
+  font-weight: 500;
+}
+
+html.high-contrast button {
+  font-weight: 700;
+}
+
+html.high-contrast ::placeholder {
+  color: #4b5563 !important;          /* gray-600 — placeholder mais legível */
+  opacity: 1;
+}

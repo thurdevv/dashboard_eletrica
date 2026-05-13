@@ -4,6 +4,8 @@ import { useState, useRef, useEffect } from 'react'
 import { Upload, Save, Loader2, Camera, Plus, Trash2, Ruler, CheckSquare, Square } from 'lucide-react'
 import ProductivityCard from './ProductivityCard'
 import { getDailyLog, addDailyEntry, deleteDailyEntry } from '@/lib/api/execution'
+import { AppError } from '@/lib/errors'
+import ErrorMessage from '@/components/ui/ErrorMessage'
 import type { ExecutionFormData, ExecutionRecord, ExecutionStatus, DailyEntry, ExecutionChecklist } from '@/types'
 import { STATUS_LABELS, CHECKLIST_LABELS, CHECKLIST_KEYS } from '@/types'
 
@@ -37,8 +39,13 @@ export default function ProgressForm({ initial, onSave, saving, projectId, globa
   const [notes,     setNotes]     = useState(initial?.notes             ?? '')
   const [photo,     setPhoto]     = useState<File | null>(null)
   const [preview,   setPreview]   = useState<string | null>(null)
-  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<AppError | string | null>(null)
   const [saved,     setSaved]     = useState(false)
+
+  // Foto obrigatória para marcar como Concluído: aceita tanto a foto
+  // nova selecionada (`photo`) quanto uma já registrada antes (`photo_url`).
+  const hasPhoto = !!photo || !!initial?.photo_url
+  const needsPhotoToComplete = status === 'COMPLETED' && !hasPhoto
 
   // Planejamento (curva S)
   const [plannedStart,    setPlannedStart]    = useState(initial?.planned_start    ?? '')
@@ -72,6 +79,9 @@ export default function ProgressForm({ initial, onSave, saving, projectId, globa
     if (firstRunRef.current) { firstRunRef.current = false; return }
     if (photo) return                          // foto pendente: só salva no submit
     if (saving) return
+    // Concluído sem foto: NÃO faz auto-save — o usuário verá a mensagem
+    // bloqueante e precisa anexar foto antes de prosseguir.
+    if (needsPhotoToComplete) return
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
     autoSaveTimerRef.current = setTimeout(async () => {
       try {
@@ -132,6 +142,13 @@ export default function ProgressForm({ initial, onSave, saving, projectId, globa
     e.preventDefault()
     setSaveError(null)
     setSaved(false)
+
+    // Validação: foto é obrigatória para concluir um elemento.
+    if (needsPhotoToComplete) {
+      setSaveError(new AppError('PHOTO_REQUIRED_TO_COMPLETE'))
+      return
+    }
+
     try {
       await onSave({
         status, executed_quantity: qty, team_size: team, worked_hours: hours, notes, photo,
@@ -404,10 +421,28 @@ export default function ProgressForm({ initial, onSave, saving, projectId, globa
         )}
       </div>
 
-      {saveError && (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">
-          {saveError}
+      {/* Aviso amigável quando o usuário escolheu Concluído mas ainda não anexou foto.
+          Aparece antes do submit, evitando frustração de clicar e ver erro. */}
+      {needsPhotoToComplete && !saveError && (
+        <div className="bg-amber-50 border border-amber-300 text-amber-900 text-xs rounded-lg px-3 py-2 flex items-start gap-2">
+          <Camera className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold">Foto necessária para concluir</p>
+            <p className="text-amber-800 mt-0.5">
+              Anexe uma foto do elemento abaixo antes de salvar como Concluído.
+            </p>
+          </div>
         </div>
+      )}
+
+      {saveError && (
+        typeof saveError === 'string'
+          ? (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">
+              {saveError}
+            </div>
+          )
+          : <ErrorMessage error={saveError} />
       )}
       {saved && (
         <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 font-medium">

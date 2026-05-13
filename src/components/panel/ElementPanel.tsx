@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { X, ZoomIn, Tag, Layers, Box, Hash, Ruler, CheckSquare, Square, CloudOff } from 'lucide-react'
+import { X, ZoomIn, Tag, Layers, Box, Hash, Ruler, CheckSquare, Square, CloudOff, User, Clock } from 'lucide-react'
 import ProgressForm from './ProgressForm'
 import CommentsTab from './CommentsTab'
 import HistoryTab from './HistoryTab'
@@ -9,6 +9,26 @@ import type { IFCElement, ExecutionRecord, ExecutionFormData } from '@/types'
 import { STATUS_LABELS, STATUS_BADGE_CLASS, CHECKLIST_LABELS, CHECKLIST_KEYS } from '@/types'
 
 type Tab = 'info' | 'form' | 'comments' | 'history'
+
+/**
+ * Formata "X minutos/horas/dias atrás" a partir de uma string ISO.
+ * Retorna null se a entrada for inválida.
+ */
+function formatRelativeTime(iso?: string): string | null {
+  if (!iso) return null
+  const date = new Date(iso)
+  const ms   = Date.now() - date.getTime()
+  if (Number.isNaN(ms) || ms < 0) return null
+  const sec  = Math.floor(ms / 1000)
+  if (sec < 60)        return 'agora há pouco'
+  const min  = Math.floor(sec / 60)
+  if (min < 60)        return `há ${min} min`
+  const hr   = Math.floor(min / 60)
+  if (hr < 24)         return `há ${hr} h`
+  const day  = Math.floor(hr / 24)
+  if (day < 30)        return `há ${day} d`
+  return date.toLocaleDateString('pt-BR')
+}
 
 interface ElementPanelProps {
   element:      IFCElement | null
@@ -62,6 +82,26 @@ export default function ElementPanel({ element, record, saving, pendingSync, onC
           <h2 className="font-bold text-gray-900 text-base leading-tight truncate" title={element.name}>
             {element.name}
           </h2>
+          {/* Carimbo "quem registrou" — visível somente quando há um
+              registro salvo. Mostra usuário e tempo relativo para que
+              o operador em campo identifique rapidamente quem foi a
+              última pessoa a tocar no elemento. */}
+          {record?.updated_by && (
+            <div className="flex items-center gap-1.5 mt-1 text-[11px] text-gray-500">
+              <User className="w-3 h-3" />
+              <span className="font-semibold text-gray-700 truncate max-w-[120px]" title={record.updated_by}>
+                {record.updated_by}
+              </span>
+              {record.updated_at && (
+                <>
+                  <Clock className="w-3 h-3 ml-1" />
+                  <span title={new Date(record.updated_at).toLocaleString('pt-BR')}>
+                    {formatRelativeTime(record.updated_at)}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-1 ml-2 mt-0.5">
           <button onClick={() => onZoomTo(element.globalId)} title="Zoom no elemento"

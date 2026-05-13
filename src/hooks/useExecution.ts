@@ -42,6 +42,7 @@ export function useExecution(projectId: string) {
   const saveRecord = useCallback(async (
     element: IFCElement,
     form: ExecutionFormData,
+    changedBy?: string,
   ) => {
     setSaving(true)
     try {
@@ -49,7 +50,7 @@ export function useExecution(projectId: string) {
       if (form.photo) {
         photoUrl = await uploadExecutionPhoto(projectId, element.globalId, form.photo)
       }
-      const saved = await upsertExecutionRecord(projectId, element, form, photoUrl)
+      const saved = await upsertExecutionRecord(projectId, element, form, photoUrl, changedBy)
       setCurrent(saved)
 
       // Patch local records list so colors update immediately
