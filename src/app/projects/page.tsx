@@ -8,8 +8,19 @@ import {
 import { getCurrentSession, logout } from '@/lib/auth'
 import { getProjects, createProject, deleteProject, duplicateProject } from '@/lib/projects'
 import { deleteModelCache, listCachedProjectIds, copyModelCache, saveModelCache } from '@/lib/storage/modelCache'
-import { unzipSync } from 'fflate'
+import { unzip, type Unzipped } from 'fflate'
 import { importProgressBundle } from '@/lib/api/execution'
+
+// Variante assíncrona do unzip do fflate — não bloqueia o main thread,
+// crítico para arquivos .bim/.zip grandes durante o upload em lote.
+function unzipAsync(data: Uint8Array): Promise<Unzipped> {
+  return new Promise((resolve, reject) => {
+    unzip(data, (err, decompressed) => {
+      if (err) reject(err)
+      else     resolve(decompressed)
+    })
+  })
+}
 import CloudMigrationBanner from '@/components/ui/CloudMigrationBanner'
 import LocaleSwitcher from '@/components/LocaleSwitcher'
 import type { Project, LoadedModel } from '@/types'
@@ -80,7 +91,7 @@ export default function ProjectsPage() {
       let model: LoadedModel
       let progressData: string | undefined
       if (lower.endsWith('.bim') || lower.endsWith('.zip')) {
-        const entries = unzipSync(new Uint8Array(buf))
+        const entries = await unzipAsync(new Uint8Array(buf))
         const ifcEntry      = Object.entries(entries).find(([n]) => n.toLowerCase().endsWith('.ifc'))
         const xktEntry      = Object.entries(entries).find(([n]) => n.toLowerCase().endsWith('.xkt'))
         const progressEntry = Object.entries(entries).find(([n]) => n.toLowerCase() === 'progresso.json')

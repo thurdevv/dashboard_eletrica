@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react'
 import { Upload, FileBox, Loader2 } from 'lucide-react'
-import { unzipSync } from 'fflate'
+import { unzip, type Unzipped } from 'fflate'
 import { saveModelCache } from '@/lib/storage/modelCache'
 import { importProgressBundle } from '@/lib/api/execution'
 import ErrorMessage from '@/components/ui/ErrorMessage'
@@ -18,14 +18,48 @@ type Step = 'idle' | 'reading' | 'error'
 
 const ACCEPTED_EXT = ['.ifc', '.xkt', '.bim', '.zip']
 
-function readAsArrayBuffer(file: File): Promise<ArrayBuffer> {
+/**
+ * Lê o arquivo como ArrayBuffer reportando progresso. Usa FileReader
+ * em vez de file.arrayBuffer() porque queremos o evento `onprogress` —
+ * em arquivos grandes (centenas de MB) o usuário precisa ver que algo
+ * está acontecendo.
+ */
+function readAsArrayBuffer(
+  file: File,
+  onProgress?: (loaded: number, total: number) => void,
+): Promise<ArrayBuffer> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
-    reader.onload  = () => resolve(reader.result as ArrayBuffer)
-    reader.onerror = () => reject(new AppError('UPLOAD_READ_FAILED',
+    reader.onload    = () => resolve(reader.result as ArrayBuffer)
+    reader.onerror   = () => reject(new AppError('UPLOAD_READ_FAILED',
       reader.error?.message ?? 'FileReader error'))
+    if (onProgress) {
+      reader.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded, e.total) }
+    }
     reader.readAsArrayBuffer(file)
   })
+}
+
+/**
+ * Wrapper assíncrono em torno do `unzip` do fflate. A versão síncrona
+ * (`unzipSync`) bloqueia o main thread por dezenas de segundos em
+ * .bim/.zip grandes (modelos IFC > 200 MB) — o navegador fica
+ * "congelado" e o sistema operacional acaba sugerindo encerrar a aba.
+ *
+ * `unzip` despacha o trabalho em chunks/workers internamente, mantendo
+ * a UI responsiva e permitindo que o spinner de progresso anime.
+ */
+function unzipAsync(data: Uint8Array): Promise<Unzipped> {
+  return new Promise((resolve, reject) => {
+    unzip(data, (err, decompressed) => {
+      if (err) reject(err)
+      else     resolve(decompressed)
+    })
+  })
+}
+
+function formatMB(bytes: number): string {
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
 export default function ModelUploader({ projectId, onModelLoad }: ModelUploaderProps) {
@@ -38,21 +72,26 @@ export default function ModelUploader({ projectId, onModelLoad }: ModelUploaderP
   const processFile = useCallback(async (file: File) => {
     setStep('reading')
     setError(null)
-    setProgress(`Lendo ${file.name}…`)
+    setProgress(`Lendo ${file.name} (${formatMB(file.size)})…`)
     try {
       const lower = file.name.toLowerCase()
       if (!ACCEPTED_EXT.some(ext => lower.endsWith(ext))) {
         throw new AppError('UPLOAD_UNSUPPORTED_FORMAT', file.name)
       }
 
-      const buf = await readAsArrayBuffer(file)
+      const buf = await readAsArrayBuffer(file, (loaded, total) => {
+        const pct = Math.round((loaded / total) * 100)
+        setProgress(`Lendo ${file.name} · ${pct}%`)
+      })
 
       let model: LoadedModel
       let progressData: string | undefined
 
       if (lower.endsWith('.bim') || lower.endsWith('.zip')) {
-        setProgress('Descompactando…')
-        const entries = unzipSync(new Uint8Array(buf))
+        setProgress(`Descompactando ${formatMB(buf.byteLength)}…`)
+        // unzipAsync não bloqueia o main thread, então o spinner continua animando
+        // mesmo em arquivos de centenas de MB.
+        const entries = await unzipAsync(new Uint8Array(buf))
         const ifcEntry      = Object.entries(entries).find(([n]) => n.toLowerCase().endsWith('.ifc'))
         const xktEntry      = Object.entries(entries).find(([n]) => n.toLowerCase().endsWith('.xkt'))
         const progressEntry = Object.entries(entries).find(([n]) => n.toLowerCase() === 'progresso.json')
@@ -78,13 +117,18 @@ export default function ModelUploader({ projectId, onModelLoad }: ModelUploaderP
         model = { type: modelType, url: '', name: file.name, data: buf }
       }
 
-      setProgress('Salvando em cache…')
-      await saveModelCache(projectId, model)
-      if (progressData) importProgressBundle(projectId, progressData)
-
+      // Libera a UI imediatamente: o viewer pode começar a renderizar enquanto
+      // o cache (IndexedDB) e o bundle de progresso terminam em background.
+      // Para um IFC de 300 MB o `put` na IDB demora segundos — não faz sentido
+      // segurar a tela de upload por isso.
       setStep('idle')
       setProgress(null)
       onModelLoad(model)
+      void saveModelCache(projectId, model)
+      if (progressData) {
+        try { importProgressBundle(projectId, progressData) }
+        catch (e) { console.warn('[upload] importProgressBundle failed', e) }
+      }
     } catch (err: unknown) {
       setError(toAppError(err, 'UPLOAD_PROCESS_FAILED'))
       setStep('error')

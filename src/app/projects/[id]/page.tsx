@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { ArrowLeft, LogOut, BarChart3, MapPin, CalendarDays, QrCode, Camera } from 'lucide-react'
+import { ArrowLeft, LogOut, BarChart3, MapPin, Camera } from 'lucide-react'
 import ModelUploader from '@/components/viewer/ModelUploader'
 import ViewerControls from '@/components/viewer/ViewerControls'
 import ElementPanel from '@/components/panel/ElementPanel'
@@ -12,7 +12,6 @@ import ElementListPanel from '@/components/panel/ElementListPanel'
 import FilterBar from '@/components/filters/FilterBar'
 import ProgressSummary from '@/components/ui/ProgressSummary'
 import ReportModal from '@/components/ui/ReportModal'
-import QRCodesModal from '@/components/ui/QRCodesModal'
 import SnapshotsModal from '@/components/ui/SnapshotsModal'
 import NotificationBell from '@/components/ui/NotificationBell'
 import { showNotification, broadcast, onBroadcast } from '@/lib/notifications'
@@ -48,7 +47,6 @@ export default function ProjectViewerPage() {
   const [levels,            setLevels]            = useState<string[]>([])
   const [elementTypes,      setElementTypes]      = useState<string[]>([])
   const [showReport,        setShowReport]        = useState(false)
-  const [showQR,            setShowQR]            = useState(false)
   const [showSnapshots,     setShowSnapshots]     = useState(false)
   const [modelElementCount, setModelElementCount] = useState(0)
   const [sheetOpen,         setSheetOpen]         = useState(false)
@@ -280,12 +278,6 @@ export default function ProjectViewerPage() {
             className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-2 md:px-3 py-1.5 rounded-lg transition-colors">
             <span>📄</span><span className="hidden md:inline">Relatório</span>
           </button>
-          <button onClick={() => setShowQR(true)}
-            title="Gerar QR Codes para imprimir"
-            aria-label="Gerar QR Codes dos elementos"
-            className="flex items-center gap-1 bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold px-2 md:px-3 py-1.5 rounded-lg transition-colors">
-            <QrCode className="w-4 h-4" /><span className="hidden md:inline">QR Codes</span>
-          </button>
           <button onClick={() => setShowSnapshots(true)}
             title="Snapshots de progresso"
             aria-label="Gerenciar snapshots de progresso"
@@ -301,11 +293,6 @@ export default function ProjectViewerPage() {
             aria-label="Abrir anotações"
             className="flex items-center gap-1 bg-pink-600 hover:bg-pink-700 text-white text-xs font-semibold px-2 md:px-3 py-1.5 rounded-lg transition-colors hidden md:flex">
             <MapPin className="w-4 h-4" /><span className="hidden md:inline">Anotações</span>
-          </Link>
-          <Link href={`/projects/${projectId}/schedule`}
-            aria-label="Abrir cronograma"
-            className="flex items-center gap-1 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold px-2 md:px-3 py-1.5 rounded-lg transition-colors hidden md:flex">
-            <CalendarDays className="w-4 h-4" /><span className="hidden md:inline">Cronograma</span>
           </Link>
 
           <NotificationBell />
@@ -445,17 +432,6 @@ export default function ProjectViewerPage() {
           projectId={projectId}
           totalElements={modelElementCount}
           onClose={() => setShowReport(false)}
-        />
-      )}
-
-      {showQR && (
-        <QRCodesModal
-          projectId={projectId}
-          projectName={projectName}
-          records={allRecords}
-          levels={levels}
-          elementTypes={elementTypes}
-          onClose={() => setShowQR(false)}
         />
       )}
 
