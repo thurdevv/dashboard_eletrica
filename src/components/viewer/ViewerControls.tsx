@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Search, Layers, Eye, Home, FolderOpen, Download, Loader2, Archive, ListFilter } from 'lucide-react'
+import { Search, Layers, Eye, Home, FolderOpen, Download, Loader2, Archive, ListFilter, PanelRight } from 'lucide-react'
 import ErrorMessage from '@/components/ui/ErrorMessage'
 import { AppError, toAppError } from '@/lib/errors'
 import type { LoadedModel } from '@/types'
@@ -17,6 +17,8 @@ interface ViewerControlsProps {
   onExportWithProgress?: () => Promise<void>
   onToggleElementList?: () => void   // abre/fecha painel de lista filtrada de elementos
   elementListOpen?:    boolean
+  onTogglePanel?:      () => void    // abre/fecha o painel lateral do elemento (desktop)
+  panelOpen?:          boolean
 }
 
 export default function ViewerControls({
@@ -30,6 +32,8 @@ export default function ViewerControls({
   onExportWithProgress,
   onToggleElementList,
   elementListOpen,
+  onTogglePanel,
+  panelOpen,
 }: ViewerControlsProps) {
   const [searchValue,    setSearchValue]    = useState('')
   const [selectedLevel,  setSelectedLevel]  = useState<string>('')
@@ -202,6 +206,25 @@ export default function ViewerControls({
             className="p-1.5 rounded bg-neutral-700 hover:bg-neutral-600 text-neutral-300 ml-auto"
           >
             <FolderOpen className="w-4 h-4" />
+          </button>
+        )}
+
+        {/* Toggle do painel lateral do elemento (apenas desktop) — fica
+            ao lado do botão de trocar modelo para agrupar controles de
+            layout do viewer. */}
+        {onTogglePanel && (
+          <button
+            onClick={onTogglePanel}
+            title={panelOpen ? 'Recolher painel lateral' : 'Abrir painel lateral'}
+            aria-label={panelOpen ? 'Recolher painel lateral' : 'Abrir painel lateral'}
+            aria-pressed={panelOpen}
+            className={`hidden md:inline-flex p-1.5 rounded transition-colors
+              ${panelOpen
+                ? 'bg-blue-600 text-white hover:bg-blue-700'
+                : 'bg-neutral-700 text-neutral-300 hover:bg-neutral-600'}
+              ${onChangeModel ? '' : 'ml-auto'}`}
+          >
+            <PanelRight className="w-4 h-4" />
           </button>
         )}
       </div>

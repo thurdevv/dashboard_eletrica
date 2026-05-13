@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { ArrowLeft, LogOut, BarChart3, MapPin, Camera, PanelRight } from 'lucide-react'
+import { ArrowLeft, LogOut, BarChart3, MapPin, Camera } from 'lucide-react'
 import ModelUploader from '@/components/viewer/ModelUploader'
 import ViewerControls from '@/components/viewer/ViewerControls'
 import ElementPanel from '@/components/panel/ElementPanel'
@@ -300,21 +300,6 @@ export default function ProjectViewerPage() {
             <MapPin className="w-4 h-4" /><span className="hidden md:inline">Anotações</span>
           </Link>
 
-          {/* Toggle do painel lateral (desktop) — quando fechado o viewer
-              ocupa toda a largura disponível. */}
-          <button
-            onClick={() => setPanelOpen((v) => !v)}
-            title={panelOpen ? 'Recolher painel lateral' : 'Abrir painel lateral'}
-            aria-label={panelOpen ? 'Recolher painel lateral' : 'Abrir painel lateral'}
-            aria-pressed={panelOpen}
-            className={`hidden md:flex p-1.5 rounded-lg transition-colors
-              ${panelOpen
-                ? 'bg-blue-600 text-white hover:bg-blue-700'
-                : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'}`}
-          >
-            <PanelRight className="w-4 h-4" />
-          </button>
-
           <NotificationBell />
 
           <button onClick={() => { logout(); router.replace('/login') }} title={`Sair (${username})`}
@@ -351,6 +336,8 @@ export default function ProjectViewerPage() {
             onExportWithProgress={handleExportWithProgress}
             onToggleElementList={() => setElementListOpen((v) => !v)}
             elementListOpen={elementListOpen}
+            onTogglePanel={() => setPanelOpen((v) => !v)}
+            panelOpen={panelOpen}
           />
           <div className="flex-1 overflow-hidden">
             <BIMViewer
