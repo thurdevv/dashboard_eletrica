@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { ArrowLeft, LogOut, BarChart3, MapPin, Camera } from 'lucide-react'
+import { ArrowLeft, LogOut, BarChart3, MapPin, Camera, PanelRight } from 'lucide-react'
 import ModelUploader from '@/components/viewer/ModelUploader'
 import ViewerControls from '@/components/viewer/ViewerControls'
 import ElementPanel from '@/components/panel/ElementPanel'
@@ -53,6 +53,10 @@ export default function ProjectViewerPage() {
   const [projectName,       setProjectName]       = useState('')
   const [username,          setUsername]          = useState('')
   const [elementListOpen,   setElementListOpen]   = useState(false)
+  // Painel lateral do elemento (desktop): fica oculto por padrão para que o
+  // viewer ocupe a largura total. Abre via botão dedicado no header e
+  // automaticamente quando o usuário clica em um elemento no modelo.
+  const [panelOpen,         setPanelOpen]         = useState(false)
 
   const viewerControlsRef  = useRef<ReturnType<typeof useXeokit> | null>(null)
   const importInputRef     = useRef<HTMLInputElement>(null)
@@ -101,7 +105,7 @@ export default function ProjectViewerPage() {
   }, [filters, deepLinkGlobalId])
 
   useEffect(() => {
-    if (selectedElement) setSheetOpen(true)
+    if (selectedElement) { setSheetOpen(true); setPanelOpen(true) }
   }, [selectedElement])
 
   // Deep-link via QR Code: ?element=<globalId> — espera o modelo carregar
@@ -205,6 +209,7 @@ export default function ProjectViewerPage() {
 
   const handleClose = useCallback(() => {
     setSheetOpen(false)
+    setPanelOpen(false)
     setTimeout(() => { setSelectedElement(null); setCurrent(null) }, 300)
   }, [setCurrent])
 
@@ -295,6 +300,21 @@ export default function ProjectViewerPage() {
             <MapPin className="w-4 h-4" /><span className="hidden md:inline">Anotações</span>
           </Link>
 
+          {/* Toggle do painel lateral (desktop) — quando fechado o viewer
+              ocupa toda a largura disponível. */}
+          <button
+            onClick={() => setPanelOpen((v) => !v)}
+            title={panelOpen ? 'Recolher painel lateral' : 'Abrir painel lateral'}
+            aria-label={panelOpen ? 'Recolher painel lateral' : 'Abrir painel lateral'}
+            aria-pressed={panelOpen}
+            className={`hidden md:flex p-1.5 rounded-lg transition-colors
+              ${panelOpen
+                ? 'bg-blue-600 text-white hover:bg-blue-700'
+                : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'}`}
+          >
+            <PanelRight className="w-4 h-4" />
+          </button>
+
           <NotificationBell />
 
           <button onClick={() => { logout(); router.replace('/login') }} title={`Sair (${username})`}
@@ -361,18 +381,21 @@ export default function ProjectViewerPage() {
           </aside>
         )}
 
-        {/* Desktop: painel lateral do elemento */}
-        <aside className="hidden md:block w-80 flex-shrink-0 bg-white border-l border-gray-200 overflow-y-auto">
-          <ElementPanel
-            element={selectedElement}
-            record={current}
-            saving={saving}
-            onClose={handleClose}
-            onZoomTo={(id) => viewerControlsRef.current?.zoomTo(id)}
-            onSave={handleSave}
-            projectId={projectId}
-          />
-        </aside>
+        {/* Desktop: painel lateral do elemento — só renderiza quando aberto
+            para o viewer ganhar a largura total enquanto está oculto. */}
+        {panelOpen && (
+          <aside className="hidden md:block w-80 flex-shrink-0 bg-white border-l border-gray-200 overflow-y-auto">
+            <ElementPanel
+              element={selectedElement}
+              record={current}
+              saving={saving}
+              onClose={handleClose}
+              onZoomTo={(id) => viewerControlsRef.current?.zoomTo(id)}
+              onSave={handleSave}
+              projectId={projectId}
+            />
+          </aside>
+        )}
       </div>
 
       {/* Legenda — oculta no mobile */}
