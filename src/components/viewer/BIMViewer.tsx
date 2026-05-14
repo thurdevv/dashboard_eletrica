@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Ruler, Layers, X, Keyboard } from 'lucide-react'
+import { Ruler, Layers, X, Keyboard, Box } from 'lucide-react'
 import { useXeokit } from '@/hooks/useXeokit'
 import ErrorMessage from '@/components/ui/ErrorMessage'
 import type { IFCElement, ExecutionRecord, LoadedModel } from '@/types'
@@ -54,13 +54,14 @@ export default function BIMViewer({ model, records, filterStatus, onSelect, onRe
         case 'f': controls.resetCamera(); break
         case 'h': controls.resetCamera(); break
         case 'm': controls.toggleMeasure(); break
+        case 'e': controls.toggleEdges(); break
         case 'escape': onClosePanel?.(); break
         default: return
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [controls.resetCamera, controls.toggleMeasure, onClosePanel]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [controls.resetCamera, controls.toggleMeasure, controls.toggleEdges, onClosePanel]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="relative w-full h-full bg-neutral-900">
@@ -142,6 +143,20 @@ export default function BIMViewer({ model, records, filterStatus, onSelect, onRe
               Limpar
             </button>
           )}
+          <button
+            onClick={controls.toggleEdges}
+            title={controls.edgesEnabled
+              ? 'Desligar arestas (acelera modelos grandes) — atalho E'
+              : 'Ligar arestas (melhor definição visual) — atalho E'}
+            aria-pressed={controls.edgesEnabled}
+            className={`flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg font-semibold shadow-lg border transition-colors
+              ${controls.edgesEnabled
+                ? 'bg-blue-600 border-blue-500 text-white'
+                : 'bg-neutral-900/85 border-neutral-700 text-neutral-300 hover:bg-neutral-700 backdrop-blur-sm'}`}
+          >
+            <Box className="w-3.5 h-3.5" />
+            {controls.edgesEnabled ? 'Arestas' : 'Sem arestas'}
+          </button>
         </div>
       )}
 
@@ -152,6 +167,8 @@ export default function BIMViewer({ model, records, filterStatus, onSelect, onRe
           <span><kbd className="font-mono">F</kbd>/<kbd className="font-mono">H</kbd> foco</span>
           <span>·</span>
           <span><kbd className="font-mono">M</kbd> medir</span>
+          <span>·</span>
+          <span><kbd className="font-mono">E</kbd> arestas</span>
           <span>·</span>
           <span><kbd className="font-mono">Esc</kbd> fechar</span>
         </div>

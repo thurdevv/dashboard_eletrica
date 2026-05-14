@@ -26,6 +26,12 @@ export function useXeokit({ canvasId, model, onElementSelect }: UseXeokitOptions
   const [elementCount,  setElementCount]  = useState(0)
   const [modelLevels,   setModelLevels]   = useState<string[]>([])
   const [measureActive, setMeasureActive] = useState(false)
+  const [edgesEnabled,  setEdgesEnabled]  = useState(true)
+
+  // Modelos grandes derrubam o framerate ao desenhar arestas de cada
+  // elemento. Usamos o tamanho do binário como heurística (não temos a
+  // contagem antes de carregar) e desligamos edges para modelos pesados.
+  const EDGES_OFF_THRESHOLD_BYTES = 8 * 1024 * 1024   // 8 MB
 
   useEffect(() => {
     if (!model) return
@@ -105,6 +111,12 @@ export function useXeokit({ canvasId, model, onElementSelect }: UseXeokitOptions
 
         let loadedModel: any
 
+        // Heurística: modelo "grande" (binário > 8 MB) carrega sem arestas
+        // para evitar travamento. Usuário pode religar com toggleEdges().
+        const dataSize       = m.data?.byteLength ?? 0
+        const initialEdges   = dataSize === 0 || dataSize < EDGES_OFF_THRESHOLD_BYTES
+        setEdgesEnabled(initialEdges)
+
         if (m.type === 'ifc') {
           // Inicializa o WASM antes de passar ao plugin
           const IfcAPI = new WebIFC.IfcAPI()
@@ -117,7 +129,7 @@ export function useXeokit({ canvasId, model, onElementSelect }: UseXeokitOptions
             wasmPath: '/',
           } as any)
           // Usa ArrayBuffer direto para evitar bug de blob URL com cache-busting
-          const loadParams: any = { id: 'model', edges: true }
+          const loadParams: any = { id: 'model', edges: initialEdges }
           if (m.data) {
             loadParams.ifc = m.data
           } else {
@@ -126,7 +138,7 @@ export function useXeokit({ canvasId, model, onElementSelect }: UseXeokitOptions
           loadedModel = loader.load(loadParams)
         } else {
           const loader    = new XKTLoaderPlugin(viewer)
-          const xktParams: any = { id: 'model', edges: true }
+          const xktParams: any = { id: 'model', edges: initialEdges }
           if (m.data) {
             xktParams.xkt = m.data          // ArrayBuffer — evita bug de blob URL
           } else {
@@ -305,6 +317,24 @@ export function useXeokit({ canvasId, model, onElementSelect }: UseXeokitOptions
     measurePluginRef.current?.clear()
   }, [])
 
+  // Liga/desliga as arestas (linhas pretas em torno de cada geometria) em
+  // tempo de execução. Em modelos com milhares de elementos, manter as
+  // arestas dobra ou triplica o custo de render — esse toggle dá uma
+  // saída para o usuário que precisa de framerate.
+  const toggleEdges = useCallback(() => {
+    const viewer = viewerRef.current
+    if (!viewer) return
+    setEdgesEnabled((prev) => {
+      const next = !prev
+      try {
+        for (const obj of Object.values<any>(viewer.scene.objects)) {
+          obj.edges = next
+        }
+      } catch { /* alguns objetos podem não suportar — ignora */ }
+      return next
+    })
+  }, [])
+
   const applyColors = useCallback((records: ExecutionRecord[], filterStatus?: string) => {
     if (!viewerRef.current) return
     colorizeByStatus(viewerRef.current, records, globalIdMapRef.current, filterStatus)
@@ -381,9 +411,9 @@ export function useXeokit({ canvasId, model, onElementSelect }: UseXeokitOptions
 
   return {
     isLoading, error, elementCount,
-    modelLevels, measureActive,
+    modelLevels, measureActive, edgesEnabled,
     applyColors, zoomTo, isolateLevel, searchElement, resetCamera,
-    toggleMeasure, clearMeasurements,
+    toggleMeasure, clearMeasurements, toggleEdges,
     selectByGlobalId,
   }
 }
