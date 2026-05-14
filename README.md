@@ -26,7 +26,8 @@
 14. [Deploy — Netlify](#14-deploy--netlify)
 15. [NeonDB (opcional)](#15-neondb-opcional)
 16. [Password gate (opcional)](#16-password-gate-opcional)
-17. [Problemas conhecidos e soluções](#17-problemas-conhecidos-e-soluções)
+17. [Segurança](#17-segurança)
+18. [Problemas conhecidos e soluções](#18-problemas-conhecidos-e-soluções)
 
 ---
 
@@ -53,6 +54,10 @@ Sistema web para acompanhamento de progresso de instalações elétricas sobre m
 | Relatório | Modal com tabela por pavimento, exportável para PDF/impressão |
 | PWA | Instalável no celular, funciona offline |
 | Full screen mobile | Viewer 3D ocupa 100% da tela; painel desliza de baixo (bottom sheet) |
+| Auth local com hash | Senhas hasheadas com bcryptjs (rounds=10); migração automática de plaintext legado |
+| CSRF + rate limit | Double-submit cookie em rotas mutativas; 5 tentativas/5min/IP em `/login` |
+| Validação de input | Schemas Zod em `/api/execution` e limite de 200 MB em uploads IFC |
+| Observabilidade | Sentry captura falhas no viewer, save de progresso e login (opt-in via DSN) |
 
 ---
 
@@ -86,18 +91,32 @@ bim-electrical-dashboard/
 │   │   ├── useExecution.ts               # Estado de registros + CRUD
 │   │   └── useXeokit.ts                  # Inicialização do viewer + pick/touch
 │   ├── lib/
-│   │   ├── api/execution.ts              # Funções CRUD (Supabase ou localStorage)
+│   │   ├── api/
+│   │   │   ├── execution.ts              # Funções CRUD (Supabase ou localStorage)
+│   │   │   └── schemas.ts                # Schemas Zod (ExecutionUpsertSchema, limites)
+│   │   ├── auth/index.ts                 # signIn/signUp + bcryptjs + migração de plaintext
+│   │   ├── observability/sentry.ts       # Wrapper opcional do Sentry
+│   │   ├── security/
+│   │   │   ├── csrf.ts                   # assertCsrf + token (double-submit)
+│   │   │   ├── csrfClient.ts             # csrfFetch helper (lado cliente)
+│   │   │   └── rateLimit.ts              # Limit in-memory por IP
 │   │   ├── shims/
 │   │   │   ├── fs.js                     # Stub de `fs` para browser
 │   │   │   └── path.js                   # Stub de `path` para browser
-│   │   ├── storage/local.ts              # localStorage CRUD completo
+│   │   ├── storage/
+│   │   │   ├── constants.ts              # Prefixos centralizados (EXEC_, DAILY_, …)
+│   │   │   ├── extras.ts                 # Comments, annotations, history (audit)
+│   │   │   └── local.ts                  # localStorage CRUD completo
 │   │   ├── supabase/
 │   │   │   ├── client.ts                 # Lazy client (não quebra sem variáveis)
 │   │   │   └── schema.sql                # Schema SQL completo
 │   │   └── viewer/
 │   │       ├── colorizer.ts              # Colorir elementos por status
 │   │       └── elementMapper.ts          # Mapear GlobalId ↔ objectId + nível
-│   └── types/index.ts                    # Todos os tipos TypeScript
+│   ├── middleware.ts                     # Basic Auth + cookie CSRF + rate limit /login
+│   └── types/
+│       ├── index.ts                      # Todos os tipos TypeScript
+│       └── xeokit.d.ts                   # Shim de tipos (xeokit-sdk publica .d.ts quebrados)
 ├── public/
 │   ├── icon.svg                          # Ícone PWA
 │   ├── icon-maskable.svg                 # Ícone PWA maskable (Android)
@@ -125,6 +144,11 @@ bim-electrical-dashboard/
 | `fflate` | ^0.8.2 | Descompactação ZIP no browser |
 | `@supabase/supabase-js` | ^2.43.4 | Banco de dados (opcional) |
 | `lucide-react` | ^0.383.0 | Ícones |
+| `bcryptjs` | ^2.4.3 | Hash de senha (auth local) |
+| `zod` | ^3.23.8 | Validação de input nas API routes |
+| `@sentry/nextjs` | ^8.45.0 | Captura opcional de erros em produção |
+| `drizzle-orm` | ^0.45.2 | ORM tipado para NeonDB Postgres |
+| `@neondatabase/serverless` | ^1.1.0 | Driver Postgres serverless |
 
 ### Dev
 
@@ -353,8 +377,8 @@ config.resolve.alias['web-ifc'] = path.resolve(__dirname, 'node_modules/web-ifc/
 
 Converte IFC → XKT no servidor.
 
-**Request:** `FormData` com campo `file` (arquivo `.ifc`)  
-**Response:** `application/octet-stream` (binário XKT)
+**Request:** `FormData` com campo `file` (arquivo `.ifc`, até 200 MB) + header `x-csrf-token`  
+**Response:** `application/octet-stream` (binário XKT) · 413 se exceder o limite · 403 se faltar token CSRF válido
 
 **Funcionamento:**
 1. Recebe o arquivo IFC
@@ -372,8 +396,11 @@ Retorna registros do Supabase.
 
 ### `POST /api/execution`
 
-Body JSON com campos do `ExecutionRecord`.  
-Faz upsert no Supabase com `onConflict: 'project_id,ifc_global_id'`.
+Body JSON validado por `ExecutionUpsertSchema` (Zod). Exige header
+`x-csrf-token` que bate com o cookie `csrf_token` (use `csrfFetch` no
+cliente). Faz upsert no Postgres com `onConflict: (project_id, ifc_global_id)`.
+Retorna 400 com `issues[]` em caso de schema inválido, 403 em CSRF
+ausente/inválido, 503 quando `DATABASE_URL` não está configurado.
 
 ---
 
@@ -442,6 +469,9 @@ SITE_USERNAME=admin
 # Supabase Auth — em standby (não usado em produção; auth roda em modo local)
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
+
+# Sentry (opcional — sem DSN o wrapper vira no-op e cai pra console.error)
+NEXT_PUBLIC_SENTRY_DSN=
 ```
 
 Sem Supabase configurado, **tudo funciona normalmente** via localStorage.
@@ -583,7 +613,67 @@ redeploy.
 
 ---
 
-## 17. Problemas conhecidos e soluções
+## 17. Segurança
+
+Mudanças recentes endureceram a superfície de ataque do app. Cada item
+abaixo tem um arquivo correspondente — abra direto pra ver o detalhe.
+
+### Hash de senhas (modo local)
+
+`src/lib/auth/index.ts` usa **bcryptjs** (rounds=10) em `signUp`,
+`signIn` e nos aliases legados (`createUser`/`login`). Registros antigos
+em plaintext continuam funcionando: o `verifyPassword` aceita ambos os
+formatos e re-hasheia o registro do usuário no primeiro login
+bem-sucedido (detecta o prefixo `$2[aby]$`). O modo Supabase não é
+afetado — a senha trafega direto pro `auth.signInWithPassword`.
+
+### CSRF — double-submit cookie
+
+O `middleware.ts` emite um cookie `csrf_token` (não-HttpOnly, SameSite=lax,
+secure em produção) na primeira navegação. O cliente reenvia o mesmo
+valor no header `x-csrf-token` via o helper `csrfFetch` em
+`src/lib/security/csrfClient.ts`. As routes mutativas
+(`POST /api/execution`, `POST /api/convert`) chamam `assertCsrf` antes
+de qualquer trabalho — também checa `origin`/`referer` contra o host
+para bloquear submissão cross-site.
+
+### Rate limit em /login
+
+`src/lib/security/rateLimit.ts` mantém um mapa in-memory por IP.
+Configurado para **5 tentativas / 5 min** em POST `/login`. Excedeu →
+`429` com header `Retry-After`. Para ambiente serverless distribuído,
+trocar a implementação por Upstash/Redis.
+
+### Validação de input com Zod
+
+`src/lib/api/schemas.ts` define `ExecutionUpsertSchema` com bounds em
+todos os números (quantidades, horas, tamanho de string). O
+`/api/convert` rejeita uploads > 200 MB (`MAX_IFC_UPLOAD_BYTES`)
+retornando `413`.
+
+### Observabilidade
+
+`src/lib/observability/sentry.ts` é um wrapper opcional — sem
+`NEXT_PUBLIC_SENTRY_DSN`, vira no-op e cai pra `console.error`. As
+exceções já estão capturadas com contexto em:
+
+| Local | Contexto |
+|---|---|
+| `useXeokit` | `where: 'useXeokit.init' \| 'useXeokit.modelLoad'`, `modelType` |
+| `ProgressForm` | `where: 'ProgressForm.save'`, `projectId`, `globalId` |
+| `LoginPage` | `where: 'LoginPage.submit'`, `mode: signIn \| signUp` |
+
+### TypeScript e ESLint na build
+
+Removidos `typescript.ignoreBuildErrors` e `eslint.ignoreDuringBuilds`
+do `next.config.mjs`. O xeokit-sdk publica `.d.ts` quebrados — em vez
+de silenciar a build inteira, declaramos o módulo como `any` em
+`src/types/xeokit.d.ts` (uso real do Viewer já é dinâmico). `tsc
+--noEmit` agora passa limpo.
+
+---
+
+## 18. Problemas conhecidos e soluções
 
 ### `supabaseUrl is required` no build
 
