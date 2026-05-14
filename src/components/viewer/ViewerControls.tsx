@@ -5,6 +5,7 @@ import { Search, Layers, Eye, Home, FolderOpen, Download, Loader2, Archive, List
 import ErrorMessage from '@/components/ui/ErrorMessage'
 import { AppError, toAppError } from '@/lib/errors'
 import type { LoadedModel } from '@/types'
+import { csrfFetch } from '@/lib/security/csrfClient'
 
 interface ViewerControlsProps {
   modelName:           string
@@ -57,7 +58,7 @@ export default function ViewerControls({
       const form = new FormData()
       form.append('file', blob, modelName.endsWith('.ifc') ? modelName : `${modelName}.ifc`)
 
-      const res = await fetch('/api/convert', { method: 'POST', body: form })
+      const res = await csrfFetch('/api/convert', { method: 'POST', body: form })
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}))
         throw new AppError('CONVERT_FAILED', errBody?.error ?? `HTTP ${res.status}`)

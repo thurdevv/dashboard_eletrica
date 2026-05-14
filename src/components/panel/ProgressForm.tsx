@@ -6,6 +6,7 @@ import ProductivityCard from './ProductivityCard'
 import { getDailyLog, addDailyEntry, deleteDailyEntry } from '@/lib/api/execution'
 import { AppError } from '@/lib/errors'
 import ErrorMessage from '@/components/ui/ErrorMessage'
+import { captureException } from '@/lib/observability/sentry'
 import type { ExecutionFormData, ExecutionRecord, ExecutionStatus, DailyEntry, ExecutionChecklist } from '@/types'
 import { STATUS_LABELS, CHECKLIST_LABELS, CHECKLIST_KEYS } from '@/types'
 
@@ -161,6 +162,7 @@ export default function ProgressForm({ initial, onSave, saving, projectId, globa
       setTimeout(() => setSaved(false), 3000)
     } catch (err: any) {
       setSaveError(err?.message ?? 'Erro ao salvar. Tente novamente.')
+      captureException(err, { where: 'ProgressForm.save', projectId, globalId })
     }
   }
 

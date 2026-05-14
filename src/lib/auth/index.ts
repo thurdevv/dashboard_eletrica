@@ -1,8 +1,27 @@
+import bcrypt from 'bcryptjs'
 import type { AppUser } from '@/types'
 import { supabase } from '@/lib/supabase/client'
+import { USERS_KEY, SESSION_KEY } from '@/lib/storage/constants'
 
-const USERS_KEY   = 'bim_users'
-const SESSION_KEY = 'bim_session'
+const BCRYPT_ROUNDS = 10
+
+// Hashes bcrypt sempre começam com `$2`. Use isso para detectar registros
+// legados em plaintext e migrá-los on-the-fly no primeiro login bem-sucedido.
+function isHashed(value: string): boolean {
+  return typeof value === 'string' && /^\$2[aby]\$/.test(value)
+}
+
+function hashPassword(plain: string): string {
+  return bcrypt.hashSync(plain, BCRYPT_ROUNDS)
+}
+
+function verifyPassword(plain: string, stored: string): boolean {
+  if (!stored) return false
+  if (isHashed(stored)) return bcrypt.compareSync(plain, stored)
+  // Registro legado em plaintext — aceita igualdade direta. O chamador deve
+  // re-hashear logo após para migrar o storage.
+  return stored === plain
+}
 
 function isSupabaseAuthReady(): boolean {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
@@ -63,7 +82,7 @@ export async function signUp(emailOrUsername: string, password: string): Promise
   const user: AppUser = {
     id:        crypto.randomUUID(),
     username:  emailOrUsername.trim(),
-    password,
+    password:  hashPassword(password),
     createdAt: new Date().toISOString(),
   }
   saveUsers([...users, user])
@@ -89,10 +108,14 @@ export async function signIn(emailOrUsername: string, password: string): Promise
     return user
   }
   // local
-  const user = getUsers().find(
-    (u) => u.username.toLowerCase() === emailOrUsername.toLowerCase() && u.password === password,
-  )
-  if (!user) return null
+  const users = getUsers()
+  const user  = users.find((u) => u.username.toLowerCase() === emailOrUsername.toLowerCase())
+  if (!user || !verifyPassword(password, user.password)) return null
+  // Migração on-the-fly: se ainda for plaintext, re-hasheia agora.
+  if (!isHashed(user.password)) {
+    user.password = hashPassword(password)
+    saveUsers(users)
+  }
   setSession(user.id, user.username)
   return user
 }
@@ -106,7 +129,7 @@ export function createUser(username: string, password: string): AppUser | null {
   const user: AppUser = {
     id:        crypto.randomUUID(),
     username:  username.trim(),
-    password,
+    password:  hashPassword(password),
     createdAt: new Date().toISOString(),
   }
   saveUsers([...users, user])
@@ -115,10 +138,13 @@ export function createUser(username: string, password: string): AppUser | null {
 
 export function login(username: string, password: string): AppUser | null {
   if (isSupabaseAuthReady()) return null   // forçar uso de signIn() no modo supabase
-  const user = getUsers().find(
-    (u) => u.username.toLowerCase() === username.toLowerCase() && u.password === password,
-  )
-  if (!user) return null
+  const users = getUsers()
+  const user  = users.find((u) => u.username.toLowerCase() === username.toLowerCase())
+  if (!user || !verifyPassword(password, user.password)) return null
+  if (!isHashed(user.password)) {
+    user.password = hashPassword(password)
+    saveUsers(users)
+  }
   setSession(user.id, user.username)
   return user
 }

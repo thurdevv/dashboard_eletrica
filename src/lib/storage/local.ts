@@ -5,6 +5,7 @@
 
 import type { ExecutionRecord, ExecutionFormData, IFCElement, FilterState, DailyEntry, ExecutionChecklist } from '@/types'
 import { appendHistory } from './extras'
+import { EXEC_PREFIX, DAILY_PREFIX, HISTORY_PREFIX } from './constants'
 
 // Faz merge entre checklist antigo e novo do form. Marca photoAttached
 // automaticamente quando há foto vinculada ao registro (foto explícita
@@ -19,15 +20,13 @@ function mergeChecklist(
   return Object.keys(next).length > 0 ? next : undefined
 }
 
-const PREFIX = 'bim_exec'
-
 function key(projectId: string, globalId: string) {
-  return `${PREFIX}_${projectId}_${globalId}`
+  return `${EXEC_PREFIX}_${projectId}_${globalId}`
 }
 
 function allKeys(projectId: string): string[] {
   if (typeof window === 'undefined') return []
-  return Object.keys(localStorage).filter((k) => k.startsWith(`${PREFIX}_${projectId}_`))
+  return Object.keys(localStorage).filter((k) => k.startsWith(`${EXEC_PREFIX}_${projectId}_`))
 }
 
 export function localGet(projectId: string, globalId: string): ExecutionRecord | null {
@@ -93,8 +92,6 @@ export function localUpsert(
 }
 
 // ─── Daily progress log ───────────────────────────────────────
-const DAILY_PREFIX = 'bim_daily'
-
 function dailyKey(projectId: string, globalId: string) {
   return `${DAILY_PREFIX}_${projectId}_${globalId}`
 }
@@ -193,8 +190,6 @@ export interface ProgressBundle {
   dailyLogs:   Record<string, DailyEntry[]>
   history?:    Record<string, unknown[]>   // histórico por globalId — preservado entre exports
 }
-
-const HISTORY_PREFIX = 'bim_history'
 
 function localGetAllHistory(projectId: string): Record<string, unknown[]> {
   if (typeof window === 'undefined') return {}

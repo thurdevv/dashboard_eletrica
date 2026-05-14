@@ -6,6 +6,7 @@ import { Layers, Eye, EyeOff } from 'lucide-react'
 import { signIn, signUp, getCurrentSession, authMode } from '@/lib/auth'
 import ErrorMessage from '@/components/ui/ErrorMessage'
 import { AppError, toAppError } from '@/lib/errors'
+import { captureException } from '@/lib/observability/sentry'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -53,6 +54,7 @@ export default function LoginPage() {
       }
     } catch (err: unknown) {
       setError(toAppError(err, 'AUTH_UNEXPECTED'))
+      captureException(err, { where: 'LoginPage.submit', mode: isRegister ? 'signUp' : 'signIn' })
     } finally {
       setLoading(false)
     }

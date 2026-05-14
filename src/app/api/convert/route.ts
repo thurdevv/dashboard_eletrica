@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { pathToFileURL } from 'url'
 import { createRequire } from 'module'
 import path from 'path'
+import { MAX_IFC_UPLOAD_BYTES } from '@/lib/api/schemas'
+import { assertCsrf } from '@/lib/security/csrf'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60   // Netlify Pro allows up to 26s; Vercel/local up to 60s
@@ -9,6 +11,8 @@ export const maxDuration = 60   // Netlify Pro allows up to 26s; Vercel/local up
 // POST /api/convert  — body: FormData { file: File(.ifc) }
 // Returns: XKT binary (application/octet-stream)
 export async function POST(req: NextRequest) {
+  const csrf = assertCsrf(req)
+  if (csrf) return csrf
   try {
     const form = await req.formData()
     const file = form.get('file') as File | null
@@ -16,6 +20,10 @@ export async function POST(req: NextRequest) {
 
     const ext = file.name.split('.').pop()?.toLowerCase()
     if (ext !== 'ifc') return NextResponse.json({ error: 'Only .ifc files are supported' }, { status: 400 })
+
+    if (file.size > MAX_IFC_UPLOAD_BYTES) {
+      return NextResponse.json({ error: `file exceeds ${MAX_IFC_UPLOAD_BYTES} bytes` }, { status: 413 })
+    }
 
     const sourceData = Buffer.from(await file.arrayBuffer())
 

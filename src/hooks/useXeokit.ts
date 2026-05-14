@@ -6,6 +6,7 @@ import { buildGlobalIdMap, buildReverseMap, buildLevelMap, extractIFCElement } f
 import { colorizeByStatus, highlightObject, showAll } from '@/lib/viewer/colorizer'
 import { AppError, toAppError } from '@/lib/errors'
 import { detectWebGL2Support } from '@/lib/webgl'
+import { captureException } from '@/lib/observability/sentry'
 
 interface UseXeokitOptions {
   canvasId:        string
@@ -182,6 +183,7 @@ export function useXeokit({ canvasId, model, onElementSelect }: UseXeokitOptions
             text,
           ))
           setIsLoading(false)
+          captureException(new Error(text), { where: 'useXeokit.modelLoad', modelType: m.type })
         })
 
         // Captura screenshot do canvas com o elemento já destacado
@@ -272,6 +274,7 @@ export function useXeokit({ canvasId, model, onElementSelect }: UseXeokitOptions
               : toAppError(err, 'VIEWER_INIT_FAILED')
           setError(appErr)
           setIsLoading(false)
+          captureException(err, { where: 'useXeokit.init', modelType: m.type })
         }
       }
     }

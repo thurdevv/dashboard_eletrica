@@ -5,9 +5,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // xeokit-sdk ships broken .d.ts files — skip TS check in production build
-  typescript: { ignoreBuildErrors: true },
-  eslint:     { ignoreDuringBuilds: true },
+  // xeokit-sdk has broken .d.ts — shimmed via src/types/xeokit.d.ts (module
+  // declared as `any`). TS/ESLint agora rodam normalmente na build.
 
 
   // ── Turbopack (dev only) ──────────────────────────────────────

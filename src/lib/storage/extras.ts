@@ -14,10 +14,7 @@ import type {
   ExecutionRecord,
 } from '@/types'
 
-const COMMENTS_PREFIX    = 'bim_comments'    // bim_comments_{projectId}
-const ANNOTATIONS_PREFIX = 'bim_annot3d'     // bim_annot3d_{projectId}
-const SCHEDULE_PREFIX    = 'bim_schedule'    // bim_schedule_{projectId}
-const HISTORY_PREFIX     = 'bim_history'     // bim_history_{projectId}_{globalId}
+import { COMMENTS_PREFIX, ANNOTATIONS_PREFIX, SCHEDULE_PREFIX, HISTORY_PREFIX } from './constants'
 
 function readArray<T>(key: string): T[] {
   if (typeof window === 'undefined') return []
